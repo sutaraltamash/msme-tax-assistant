@@ -1,0 +1,174 @@
+{
+  "$schema_description": "Declarative 2026 GST statutory compliance rules (CDA). Standard: Indian GST / CGST Act 2017, e-invoicing mandates effective 2026. Consumed by backend RuleEngine (backend/src/RuleEngine.cpp). Rules are data — editing this file never requires recompiling the binary.",
+
+  "$condition_dsl": {
+    "semantics": "For every rule, condition evaluates as a VIOLATION predicate: TRUE => rule violated, a gap is raised and (for INPUT_TEXT rules) the message_template is streamed to the user. FALSE => rule passes.",
+    "checks": [
+      {
+        "field": "dot.path.into.extracted.document OR state matrix field (e.g. invoice.place_of_supply)",
+        "op": "eq|neq|gt|gte|lt|lte|present|absent|eq_true|eq_false|token_length_out|ne_cross",
+        "value": "literal expected value (omitted for present/absent/eq_true/eq_false)",
+        "values": "allowed-token-lengths list, used by op=token_length_out (a violation fires when the string token's length is OUTSIDE the set)",
+        "value_from": "cross-field reference: compare 'field' against another path instead of a literal (used by op=ne_cross)"
+      },
+      {
+        "groups": "A check may instead be a nested composite {operator:'AND'|'OR', checks:[...]} with no 'field'; it is evaluated recursively and counts as one check. Used to express grouped conditions, e.g. R-CLASS-007 flags a missing buyer GSTIN only when the classification is not B2C."
+      }
+    ],
+    "rule_level": {
+      "operator": "'AND' or 'OR': how to combine checks",
+      "when": "optional single precondition check; the whole rule is SKIPPED (passes) when false. Example: {\"field\":\"invoice.irn_present\",\"op\":\"eq_true\"}"
+    }
+  },
+
+  "meta": {
+    "version": "2026-1.0",
+    "effective_period": "GST FY 2026-27",
+    "jurisdiction": "India",
+    "currency": "INR",
+    "amount_scale": 2
+  },
+
+  "thresholds": {
+    "e_invoicing_aato_crore": 5,
+    "irp_reporting_days": 30,
+    "hsn_min_digits": 4,
+    "hsn_max_digits": 6
+  },
+
+  "rules": [
+    {
+      "id": "R-EINV-001",
+      "category": "e_invoice",
+      "severity": "error",
+      "status_field": "e_invoice_required",
+      "summary": "Mandatory e-invoicing for AATO exceeding INR 5 Crore.",
+      "condition": {
+        "operator": "AND",
+        "when": { "field": "supplier.aato_crore", "op": "present" },
+        "checks": [
+          { "field": "supplier.aato_crore", "op": "gt", "value": 5, "source": "thresholds.e_invoicing_aato_crore" },
+          { "field": "invoice.irn_present", "op": "eq_false" }
+        ]
+      },
+      "message_template": "The aggregate annual turnover provided is INR {aato_crore} Crore, which exceeds the statutory threshold. Electronic invoicing is therefore MANDATORY. Please supply the 64-character Invoice Registration Number (IRN) obtained from the IRP, or confirm an exemption under Rule 48(4) of the CGST Rules.",
+      "resolve_gap_by": "irn_or_exemption",
+      "action_required": "INPUT_TEXT"
+    },
+
+    {
+      "id": "R-IRP-002",
+      "category": "irp",
+      "severity": "error",
+      "status_field": "irp_reporting_window_valid",
+      "summary": "E-invoiced transactions must be reported on the IRP within the mandatory 30-day window.",
+      "condition": {
+        "operator": "AND",
+        "when": { "field": "invoice.irn_present", "op": "eq_true" },
+        "checks": [
+          { "field": "irp.reported_on", "op": "absent" }
+        ]
+      },
+      "message_template": "This e-invoiced transaction must be reported on the Invoice Registration Portal within 30 days of invoice date. No IRP reporting timestamp was captured. Please provide the IRP acknowledgment date (YYYY-MM-DD).",
+      "resolve_gap_by": "irp_reported_on",
+      "action_required": "INPUT_TEXT"
+    },
+
+    {
+      "id": "R-SPLIT-003",
+      "category": "tax_split",
+      "severity": "error",
+      "status_field": "tax_split_consistent",
+      "summary": "Intra-state supplies must never carry IGST; they must split tax into CGST + SGST.",
+      "condition": {
+        "operator": "AND",
+        "checks": [
+          { "field": "invoice.place_of_supply", "op": "eq", "value": "same_as_supplier_state" },
+          { "field": "invoice.tax_breakdown.has_igst", "op": "eq_true" }
+        ]
+      },
+      "message_template": "The recorded place of supply matches the supplier's state (intra-state), yet the invoice carries IGST. Intra-state supplies must split tax into CGST + SGST (Rule 3, ITC Rules 2017). Please confirm the correct place of supply or tax allocation.",
+      "resolve_gap_by": "tax_allocation",
+      "action_required": "INPUT_TEXT"
+    },
+
+    {
+      "id": "R-SPLIT-004",
+      "category": "tax_split",
+      "severity": "error",
+      "status_field": "tax_split_consistent",
+      "summary": "Inter-state supplies must carry IGST only, never CGST + SGST.",
+      "condition": {
+        "operator": "AND",
+        "checks": [
+          { "field": "invoice.place_of_supply", "op": "neq", "value": "same_as_supplier_state" },
+          { "field": "invoice.tax_breakdown.has_cgst_sgst", "op": "eq_true" }
+        ]
+      },
+      "message_template": "The place of supply differs from the supplier's state (inter-state), yet the invoice carries CGST/SGST. Inter-state supplies must carry IGST only. Please confirm the correct place of supply or tax allocation.",
+      "resolve_gap_by": "tax_allocation",
+      "action_required": "INPUT_TEXT"
+    },
+
+    {
+      "id": "R-HSN-005",
+      "category": "hsn",
+      "severity": "warning",
+      "status_field": "hsn_digits_valid",
+      "summary": "Every HSN code on the invoice must be 4, 6 or 8 digits.",
+      "condition": {
+        "operator": "AND",
+        "checks": [
+          { "field": "invoice.hsn_string", "op": "token_length_out", "values": [4, 6, 8], "source": "thresholds.hsn_min_digits / hsn_max_digits; 8-digit export codes also valid" }
+        ]
+      },
+      "message_template": "Line item {line_index} reports HSN '{hsn}'. Under CGST Notification 01/2026, HSN must be 4, 6 or 8 digits (8-digit codes cover exports and high-turnover filers). Please provide the correct HSN code.",
+      "resolve_gap_by": "correct_hsn",
+      "action_required": "INPUT_TEXT"
+    },
+
+    {
+      "id": "R-CHRG-006",
+      "category": "tax_split",
+      "severity": "warning",
+      "status_field": "state_tax_charge_consistent",
+      "summary": "On intra-state invoices, SGST must equal CGST (with matching rates).",
+      "condition": {
+        "operator": "OR",
+        "when": { "field": "invoice.tax_breakdown.has_igst", "op": "eq_false" },
+        "checks": [
+          { "field": "invoice.tax_breakdown.cgst", "op": "absent" },
+          { "field": "invoice.tax_breakdown.sgst", "op": "absent" },
+          { "field": "invoice.tax_breakdown.sgst", "op": "ne_cross", "value_from": "invoice.tax_breakdown.cgst" }
+        ]
+      },
+      "message_template": "The SGST amount ({sgst}) does not equal CGST ({cgst}) on this intra-state invoice. Please confirm the amounts split across the two heads.",
+      "resolve_gap_by": "tax_allocation",
+      "action_required": "INPUT_TEXT"
+    },
+
+    {
+      "id": "R-CLASS-007",
+      "category": "classification",
+      "severity": "info",
+      "status_field": "b2b_b2c_determined",
+      "summary": "Every invoice must be classified B2B or B2C; an undetermined status -- or a B2B/unknown supply that lacks a buyer GSTIN -- is a gap requiring user input. Legitimate B2C sales (no buyer GSTIN) are never flagged.",
+      "condition": {
+        "operator": "OR",
+        "checks": [
+          { "field": "invoice.classification", "op": "eq", "value": "UNDETERMINED" },
+          {
+            "operator": "AND",
+            "checks": [
+              { "field": "invoice.classification", "op": "neq", "value": "B2C" },
+              { "field": "buyer.gstin", "op": "absent" }
+            ]
+          }
+        ]
+      },
+      "message_template": "This transaction needs classification input: it is undetermined, or a B2B/unknown supply lacks the buyer's GSTIN. Is the buyer registered under GST? Provide the buyer GSTIN (B2B) or confirm the supply classification.",
+      "resolve_gap_by": "buyer_registration",
+      "action_required": "INPUT_TEXT"
+    }
+  ]
+}

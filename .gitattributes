@@ -1,0 +1,29 @@
+# Normalize line endings across the tree so Git reports a whitespace-free
+# diff. C/C++ sources and the vendored dependency headers are pinned to LF
+# everywhere (checkout and commit); text docs ride the platform default.
+
+*                                   text=auto
+
+# C/C++ sources and headers: LF on checkout/commit everywhere
+*.hpp                               text eol=lf
+*.cpp                               text eol=lf
+*.h                                 text eol=lf
+*.c                                 text eol=lf
+
+# Vendored third-party headers (asio/crow/json/sqlite) stay LF too
+backend/include/**                   text eol=lf
+
+# Hand-authored text files keep the platform's default (crlf on Windows)
+*.md                                text
+*.json                              text
+*.sql                               text
+*.txt                               text
+*.yml                               text
+*.yaml                              text
+
+# Top-level config files
+.env.example                        text
+.gitattributes                      text
+.gitignore                          text
+CMakeLists.txt                      text
+CMakePresets.json                   text

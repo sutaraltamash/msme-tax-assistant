@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Powered Smart Tax Compliance Assistant (MSME GST)</title>
+    <link rel="stylesheet" href="assets/styles.css">
+    <!-- Fallback if root path is used -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- App Header -->
+    <header class="app-header">
+        <div class="brand-section">
+            <div class="brand-logo">₹</div>
+            <div>
+                <h1 class="brand-title">Tax Compliance Assistant</h1>
+                <p class="brand-subtitle">MSME GST Statutory Verification & Offline Filing Engine (2026 Mandates)</p>
+            </div>
+        </div>
+        <div class="header-status">
+            <span class="badge badge-rule">Statutory Rules 2026 Active</span>
+            <div id="connectionBadge" class="badge badge-connecting">
+                <span class="badge-dot"></span>
+                <span id="connectionText">Connecting...</span>
+            </div>
+            <span id="sessionIdDisplay" class="badge">Session: Initializing...</span>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="app-container">
+        <!-- Left Panel: Ingestion & Live Compliance Ledger -->
+        <section class="panel">
+            <div class="panel-header">
+                <h2 class="panel-title">
+                    <span>📄</span> Ingestion & Verified Ledger (Deterministic)
+                </h2>
+                <span id="supplyTypeBadge" class="badge">Awaiting Document</span>
+            </div>
+            <div class="panel-body">
+                <!-- Dropzone -->
+                <div id="dropzone" class="dropzone">
+                    <div class="dropzone-icon">📥</div>
+                    <h3 class="dropzone-title">Drag & Drop Invoice Here</h3>
+                    <p class="dropzone-desc">Supports PDF, PNG, JPEG, WEBP (Max 10 MB)</p>
+                    <input type="file" id="fileInput" accept="image/*,application/pdf" class="hidden">
+                    <button type="button" class="btn-upload" onclick="document.getElementById('fileInput').click()">Browse Invoices</button>
+                    <div id="uploadStatus" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;"></div>
+                </div>
+
+                <!-- Compliance Audit Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">2026 Statutory Compliance Audit</span>
+                    </div>
+                    <div id="auditList" class="audit-list">
+                        <div class="audit-item audit-pass">
+                            <span class="audit-icon">✓</span>
+                            <span>AATO &gt; ₹5 Cr E-Invoicing Threshold Check Ready</span>
+                        </div>
+                        <div class="audit-item audit-pass">
+                            <span class="audit-icon">✓</span>
+                            <span>IRP 30-Day Window Verification Ready</span>
+                        </div>
+                        <div class="audit-item audit-pass">
+                            <span class="audit-icon">✓</span>
+                            <span>HSN 4/6-Digit & Tax Split (IGST vs CGST+SGST) Validator Armed</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- State Matrix Ledger -->
+                <div id="ledgerEmptyState" style="text-align: center; color: var(--text-muted); padding: 2rem 0;">
+                    <em>Upload an invoice to view the extracted deterministic ledger and tax calculations.</em>
+                </div>
+
+                <div id="ledgerContent" class="hidden" style="display: flex; flex-direction: column; gap: 1rem;">
+                    <!-- Parties Grid -->
+                    <div class="party-grid">
+                        <div class="party-box">
+                            <div class="party-label">Supplier (Seller)</div>
+                            <div id="supplierName" class="party-name">Acme Corp</div>
+                            <div id="supplierGstin" class="party-gstin">27AAAAA0000A1Z5</div>
+                            <div id="supplierState" class="party-state">State: 27 (Maharashtra)</div>
+                        </div>
+                        <div class="party-box">
+                            <div class="party-label">Recipient (Buyer)</div>
+                            <div id="buyerName" class="party-name">Beta Industries</div>
+                            <div id="buyerGstin" class="party-gstin">29BBBBB0000B1Z2</div>
+                            <div id="buyerState" class="party-state">State: 29 (Karnataka)</div>
+                        </div>
+                    </div>
+
+                    <!-- Meta Details -->
+                    <div class="card" style="padding: 0.75rem;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.82rem;">
+                            <span><strong>Invoice No:</strong> <span id="invoiceNumber" class="mono">INV-2026-001</span></span>
+                            <span><strong>Date:</strong> <span id="invoiceDate" class="mono">01/02/2026</span></span>
+                            <span><strong id="irnStatus" class="mono">IRN: Not Detected</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Line Items Table -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">Extracted Line Items</span>
+                        </div>
+                        <div class="table-wrapper">
+                            <table class="ledger-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>HSN</th>
+                                        <th>Description</th>
+                                        <th class="text-right">Qty</th>
+                                        <th class="text-right">Unit Price</th>
+                                        <th class="text-right">Taxable</th>
+                                        <th class="text-right">CGST</th>
+                                        <th class="text-right">SGST</th>
+                                        <th class="text-right">IGST</th>
+                                        <th class="text-right">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="lineItemsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Totals Breakdown -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">Deterministic Tax Breakdown (Integer Cents)</span>
+                        </div>
+                        <div class="totals-grid">
+                            <div class="total-box">
+                                <div class="total-label">Taxable Value</div>
+                                <div id="totalTaxable" class="total-value">₹ 0.00</div>
+                            </div>
+                            <div class="total-box">
+                                <div class="total-label">Integrated Tax (IGST)</div>
+                                <div id="totalIgst" class="total-value">₹ 0.00</div>
+                            </div>
+                            <div class="total-box">
+                                <div class="total-label">Central Tax (CGST)</div>
+                                <div id="totalCgst" class="total-value">₹ 0.00</div>
+                            </div>
+                            <div class="total-box">
+                                <div class="total-label">State Tax (SGST)</div>
+                                <div id="totalSgst" class="total-value">₹ 0.00</div>
+                            </div>
+                            <div class="total-box">
+                                <div class="total-label">Total Tax Amount</div>
+                                <div id="totalTax" class="total-value">₹ 0.00</div>
+                            </div>
+                            <div class="total-box total-highlight">
+                                <div class="total-label">Total Invoice Value</div>
+                                <div id="totalInvoice" class="total-value">₹ 0.00</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Panel: Conversational Interrogation & Filing Console -->
+        <section class="panel">
+            <div class="panel-header">
+                <h2 class="panel-title">
+                    <span>💬</span> Compliance Assistant & Interrogation
+                </h2>
+            </div>
+            <div class="panel-body">
+                <!-- Chat Feed -->
+                <div id="chatMessages" class="chat-messages">
+                    <!-- Messages will be populated dynamically -->
+                </div>
+
+                <!-- Chat Input Form -->
+                <div class="chat-input-container">
+                    <form id="chatForm" class="chat-form">
+                        <input type="text" id="chatInput" class="chat-input" placeholder="Type your response to clarify missing fields or compliance questions..." autocomplete="off">
+                        <button type="submit" id="btnSend" class="btn-send">Send</button>
+                    </form>
+                </div>
+
+                <!-- Filing Export Section -->
+                <div class="filing-section">
+                    <button type="button" id="btnRequestFiling" class="btn-filing" disabled>
+                        <span>⚡</span> Generate GST Offline Utility CSVs
+                    </button>
+
+                    <div id="deliverablesContainer" class="deliverables-grid hidden">
+                        <div class="deliverable-card">
+                            <div class="deliverable-name">gstr1_b2b.csv</div>
+                            <div class="deliverable-desc">B2B Outward Supplies offline return format.</div>
+                            <div style="display: flex; gap: 0.35rem; margin-top: auto;">
+                                <button type="button" id="gstr1PreviewBtn" class="btn-download" style="flex:1;">Preview</button>
+                                <button type="button" id="gstr1Download" class="btn-download" style="flex:1;">Download</button>
+                            </div>
+                        </div>
+                        <div class="deliverable-card">
+                            <div class="deliverable-name">gstr3b_summary.csv</div>
+                            <div class="deliverable-desc">Monthly Return Summary (3.1 Taxable/RCM supplies).</div>
+                            <div style="display: flex; gap: 0.35rem; margin-top: auto;">
+                                <button type="button" id="gstr3bPreviewBtn" class="btn-download" style="flex:1;">Preview</button>
+                                <button type="button" id="gstr3bDownload" class="btn-download" style="flex:1;">Download</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- CSV Preview Modal -->
+    <div id="previewModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Preview File</h3>
+                <button type="button" id="modalCloseBtn" style="background: none; border: none; color: var(--text-secondary); font-size: 1.25rem; cursor: pointer;">✕</button>
+            </div>
+            <div id="modalBody" class="modal-body"></div>
+            <div class="modal-footer">
+                <button type="button" id="modalDownloadBtn" class="btn-upload">Download CSV</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="assets/websocket_client.js"></script>
+    <script src="assets/file_handler.js"></script>
+    <script src="assets/app.js"></script>
+    <!-- Fallback if served from flat directory -->
+    <script>
+        if (typeof TaxWebSocketClient === 'undefined') {
+            document.write('<script src="websocket_client.js"><\/script>');
+            document.write('<script src="file_handler.js"><\/script>');
+            document.write('<script src="app.js"><\/script>');
+        }
+    </script>
+</body>
+</html>

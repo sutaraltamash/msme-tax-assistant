@@ -1,0 +1,36 @@
+# Environment
+.env
+.env.local
+
+# Build artifacts
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+*.o
+*.obj
+*.exe
+
+# Databases (developer-local, never committed)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.sln
+*.suo
+*.user
+.vs/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+.claude/
+/STATE_CHECKPOINT.md
