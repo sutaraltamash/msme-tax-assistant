@@ -14,7 +14,7 @@
 //
 //   USER_REPLY     -> archive the user's text into chat_messages (rolling
 //                     abstract input); acknowledge. Resolution semantics land
-//                     with the live Gemini chat loop in Step G.
+//                     with the live Groq chat loop in Step G.
 //
 //   REQUEST_FILING -> gather the session's matrices (in-memory, falling back to
 //                     lossless DB rehydration after a restart) and serialize

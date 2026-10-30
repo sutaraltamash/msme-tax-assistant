@@ -255,7 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 wsClient.uploadInvoice(info.base64, info.mimeType);
-                uploadStatus.innerText = `Uploaded ${info.fileName}. Gemini multimodal parsing & rule checks in progress...`;
+                uploadStatus.innerText = `Uploaded ${info.fileName}. Groq multimodal parsing & rule checks in progress...`;
             } catch (e) {
                 uploadStatus.innerText = `Upload failed: ${e.message}`;
                 appendChatMessage('assistant', `Error sending invoice over WebSocket: ${e.message}`);

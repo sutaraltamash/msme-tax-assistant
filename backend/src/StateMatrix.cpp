@@ -359,7 +359,7 @@ bool StateMatrix::validateAgainstSchema(const json& doc, const json& schema,
                          const std::string& path, std::vector<std::string>& errs)
         {
             // A schema node with no "$type" is a BARE object spec — e.g. the
-            // gemini_schema "line_items.$item" container. Default it to object
+            // groq_schema "line_items.$item" container. Default it to object
             // so per-field specs inside are walked, not rejected as unknown.
             std::string type = schema.value("$type", "");
             if (type.empty())

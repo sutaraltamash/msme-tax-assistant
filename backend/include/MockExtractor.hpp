@@ -1,7 +1,7 @@
 // ============================================================================
 // MockExtractor — deterministic stand-in for the IExtractor seam (Step F).
 //
-// The live GeminiClient (Step G) implements the same IExtractor interface and
+// The live GroqClient (Step G) implements the same IExtractor interface and
 // is injected at startup in its place. Until then this mock returns a controlled
 // document so the full pipeline (upload -> validate -> rules -> persist -> file)
 // is exercised with zero network and zero nondeterminism.

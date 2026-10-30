@@ -2,8 +2,8 @@
 // HttpClient — synchronous HTTPS transport seam for the probabilistic layer.
 //
 // The decoupled-cloud-hybrid design (architecture.md §1) keeps the
-// PROBABILISTIC layer (Gemini extractor) as the only network caller, and hides
-// that one dependency behind this thin seam so Step G's GeminiClient can:
+// PROBABILISTIC layer (Groq extractor) as the only network caller, and hides
+// that one dependency behind this thin seam so Step G's GroqClient can:
 //
 //   * be tested deterministically without a socket — a test injects a
 //     canned-response FakeHttpClient;

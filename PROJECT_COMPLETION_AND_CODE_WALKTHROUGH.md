@@ -60,7 +60,7 @@ This document provides a detailed line-by-line structural analysis of the core f
 - System message logging & status update to FILED (lines 320-328)
 
 #### Architectural Significance:
-- Implements Decoupled Cloud-Hybrid pattern: Probabilistic (Gemini) + Deterministic (C++) layers
+- Implements Decoupled Cloud-Hybrid pattern: Probabilistic (Groq) + Deterministic (C++) layers
 - Uses integer-cent arithmetic for 0% tax calculation hallucination guarantee
 - Provides lossless cold-start rehydration via SQLite persistence
 - Maintains session state with thread-safe mutex protection
@@ -75,7 +75,7 @@ This document provides a detailed line-by-line structural analysis of the core f
 **Lines 1-18: Header & Dependencies**
 - Standard library includes
 - Crow web framework components
-- Project-specific headers (GeminiClient, HttpClient, extractors, Pipeline)
+- Project-specific headers (GroqClient, HttpClient, extractors, Pipeline)
 
 **Lines 40-70: Environment Helper Functions**
 - `getEnv`: Safe environment variable retrieval with fallback
@@ -84,10 +84,10 @@ This document provides a detailed line-by-line structural analysis of the core f
 
 **Lines 72-121: Extractor Selection Seam (AI_MODE)**
 - Reads AI_MODE environment variable (defaults to "mock")
-- Live mode (AI_MODE=live): Builds GeminiClient with API key validation
-  - Validates GEMINI_API_KEY presence and non-placeholder value
-  - Loads GEMINI_SCHEMA_PATH for strict JSON validation
-  - Creates GeminiClient with HTTP client and schema
+- Live mode (AI_MODE=live): Builds GroqClient with API key validation
+  - Validates GROQ_API_KEY presence and non-placeholder value
+  - Loads GROQ_SCHEMA_PATH for strict JSON validation
+  - Creates GroqClient with HTTP client and schema
 - Fallback mode: Uses MockExtractor for offline testing
 - Prints extractor selection to stderr for visibility
 
@@ -111,8 +111,8 @@ This document provides a detailed line-by-line structural analysis of the core f
 
 #### Architectural Significance:
 - Clean separation of concerns: HTTP serving vs WebSocket handling
-- Extractor seam allows switching between mock (testing) and live (production) Gemini
-- Strict JSON schema enforcement for Gemini responses
+- Extractor seam allows switching between mock (testing) and live (production) Groq
+- Strict JSON schema enforcement for Groq responses
 - Proper session binding to WebSocket connections via userdata
 - Environment-driven configuration for deployment flexibility
 
@@ -196,7 +196,7 @@ This document provides a detailed line-by-line structural analysis of the core f
 
 - **0% Tax Calculation Hallucination**: Integer-cent arithmetic in StateMatrix
 - **Lossless Persistence**: SQLite storage enables cold-start rehydration
-- **Strict Schema Validation**: Gemini responses validated against config/gemini_schema.json
+- **Strict Schema Validation**: Groq responses validated against config/groq_schema.json
 - **Deterministic Rule Engine**: Configuration-driven 2026 GST compliance verification
 - **Full-Duplex Communication**: Real-time bidirectional WebSocket protocol
 - **Environment Configuration**: Zero hardcoded secrets, all via environment/.env

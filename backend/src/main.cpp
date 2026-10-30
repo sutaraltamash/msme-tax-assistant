@@ -5,7 +5,7 @@
 //
 //   * /ws negotiates a session (SESSION_INIT with a fresh session id) and then
 //     dispatches the architecture.md §10 message contract onto tax::Pipeline:
-//       UPLOAD_INVOICE -> IExtractor (mock or live Gemini per AI_MODE) ->
+//       UPLOAD_INVOICE -> IExtractor (mock or live Groq per AI_MODE) ->
 //                        StateMatrix -> RuleEngine -> SQLite persistence ->
 //                        CHAT_MESSAGE gaps
 //       USER_REPLY     -> archived to the transcript
@@ -13,7 +13,7 @@
 //   * /   serves index.html, /assets/<path> serves the frontend bundle.
 //
 // The extraction seam selection lives in makeExtractor() below: AI_MODE=live
-// builds a GeminiClient (reading GEMINI_API_KEY / GEMINI_MODEL from the
+// builds a GroqClient (reading GROQ_API_KEY / GROQ_MODEL from the
 // environment), anything else falls back to the offline MockExtractor.
 // ============================================================================
 
@@ -28,7 +28,7 @@
 #include "crow/json.h"
 #include "crow/middlewares/cors.h"
 
-#include "GeminiClient.hpp"
+#include "GroqClient.hpp"
 #include "HttpClient.hpp"
 #include "IExtractor.hpp"
 #include "MockExtractor.hpp"
@@ -70,9 +70,9 @@ namespace
     }
 
     // ------------------------------------------------------------------
-    // Extractor selection (Phase 1 = mock, Phase 2 = live Gemini)
+    // Extractor selection (Phase 1 = mock, Phase 2 = live Groq)
     //
-    // When AI_MODE=live the server MUST have GEMINI_API_KEY set; at startup
+    // When AI_MODE=live the server MUST have GROQ_API_KEY set; at startup
     // this is checked before any WebSocket client can hit /ws, so a missing
     // key is caught instantly with a clear message instead of failing deep
     // inside a handler. If the key is present but matches the default
@@ -83,19 +83,19 @@ namespace
     {
         const std::string mode = "live";
         const std::string schemaPath =
-            getEnv("GEMINI_SCHEMA_PATH", "./config/gemini_schema.json");
+            getEnv("GROQ_SCHEMA_PATH", "./config/groq_schema.json");
         const std::string schemaJson = readFileText(schemaPath);
 
         if (mode == "live")
         {
             std::vector<std::string> api_keys = {
-                
+               
             };
-            const std::string model = "gemini-3.7-flash";
+            const std::string model = "qwen/qwen3.8-27b";
 
             std::cerr << "[extractor] AI_MODE=live, model=" << model
                       << ", api_keys=" << api_keys.size() << " (round-robin)\n";
-            return std::make_unique<tax::GeminiClient>(
+            return std::make_unique<tax::GroqClient>(
                 api_keys, model, tax::createHttpClient(), schemaJson);
         }
 
@@ -132,7 +132,7 @@ int main()
     const std::string staticDir = getEnv("FRONTEND_DIR", "frontend");
 
     // ------------------------------------------------------------------
-    // The Step F/G pipeline: extractor seam (mock or live Gemini per
+    // The Step F/G pipeline: extractor seam (mock or live Groq per
     // AI_MODE) + rules config + SQLite.
     // ------------------------------------------------------------------
     std::unique_ptr<tax::Pipeline> pipeline;

@@ -262,7 +262,7 @@ PipelineResult Pipeline::processUserReply(const std::string& session_id,
     const std::string preview = text.size() > 240 ? text.substr(0, 240) + "…" : text;
     const std::string ack =
         "Your note was recorded. In the current extractor-seam phase your reply "
-        "is archived for the conversation's rolling abstract; the live Gemini chat "
+        "is archived for the conversation's rolling abstract; the live Groq chat "
         "loop (Step G) will apply such corrections to the stored invoice. Reply "
         "again, or request the filing once the details are settled.\n\n“" +
         preview + "”";

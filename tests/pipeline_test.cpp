@@ -141,7 +141,7 @@ TEST(upload_gap_document_interrogates_with_rule_message)
 TEST(upload_malformed_extraction_is_rejected_before_persist)
 {
     TempDb db;
-    // Extraction that violates the gemini_schema contract -> rejected at the
+    // Extraction that violates the groq_schema contract -> rejected at the
     // StateMatrix gate; nothing may reach the DB.
     Pipeline pipeline(std::make_unique<MockExtractor>(json{{"foo", "bar"}}),
                       kRulesPath, db.str());

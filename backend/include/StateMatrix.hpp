@@ -11,7 +11,7 @@
 //     value and there is no mutation API; a new document yields a new matrix.
 //     getSnapshot() hands back a defensive copy.
 //   * Native validation — validateAndSanitize() enforces the
-//     config/gemini_schema.json contract using nlohmann/json built-in type
+//     config/groq_schema.json contract using nlohmann/json built-in type
 //     checks (is_object/is_array/is_number/is_string/is_boolean). No external
 //     JSON-Schema validator is used or required.
 //
@@ -97,7 +97,7 @@ class StateMatrix
 public:
     // ---- construction (fail-fast native validation) ----------------------
     // Validates and sanitizes an extracted invoice document against the
-    // config/gemini_schema.json contract. Throws std::invalid_argument at the
+    // config/groq_schema.json contract. Throws std::invalid_argument at the
     // first structural or type violation; never returns a partially-built
     // matrix.
     static StateMatrix validateAndSanitize(const json& doc);
@@ -111,7 +111,7 @@ public:
                                         SupplyType type);
 
     // ---- generic schema type-walk (native nlohmann checks) ----------------
-    // Walks `schema` (a gemini_schema.json-shaped tree) against `doc`.
+    // Walks `schema` (a groq_schema.json-shaped tree) against `doc`.
     // Non-fatally appends human-readable errors; returns true only when the
     // document conforms exactly.
     static bool validateAgainstSchema(const json& doc, const json& schema,

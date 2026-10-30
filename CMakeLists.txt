@@ -31,7 +31,7 @@ add_library(tax_core STATIC
   backend/src/RuleEngine.cpp
   backend/src/GSTRGenerator.cpp
   backend/src/MockExtractor.cpp
-  backend/src/GeminiClient.cpp
+  backend/src/GroqClient.cpp
   backend/src/InvoiceRepository.cpp
   backend/src/Pipeline.cpp
   backend/include/sqlite3.c         # SQLite amalgamation compiled as C

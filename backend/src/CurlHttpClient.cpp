@@ -55,7 +55,7 @@ HttpResponse CurlHttpClient::postJson(const std::string& url,
 
     curl_slist* head = nullptr;
     head = curl_slist_append(head, "Content-Type: application/json");
-    const std::string auth = "x-goog-api-key: " + bearer_token;
+    const std::string auth = "Authorization: Bearer " + bearer_token;
     head = curl_slist_append(head, auth.c_str());
     if (head == nullptr)
     {

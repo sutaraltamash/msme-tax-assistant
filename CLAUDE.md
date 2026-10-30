@@ -11,7 +11,7 @@ AI-Powered Smart Tax Compliance Assistant for Indian MSMEs. Automates multimodal
 - **Backend:** C++17 with Crow framework (WebSocket server)
 - **Frontend:** HTML5/CSS3/Vanilla JS (single-page app)
 - **Database:** SQLite3 (embedded)
-- **AI Integration:** Google Gemini Pro API (multimodal reasoning)
+- **AI Integration:** Groq Cloud API (multimodal reasoning)
 - **Build System:** CMake 3.15+
 - **JSON Library:** nlohmann/json (single header)
 - **HTTP Client:** libcurl
@@ -47,7 +47,7 @@ cd frontend && python3 -m http.server 3000
 
 ### Core Design: Decoupled Cloud-Hybrid
 
-- **Probabilistic Layer:** Gemini Pro handles multimodal extraction (invoice parsing to JSON)
+- **Probabilistic Layer:** Groq (Llama Vision) handles multimodal extraction (invoice parsing to JSON)
 - **Deterministic Layer:** C++ backend handles all math (CGST/SGST/IGST splits) with 0% hallucination guarantee
 - **Rolling Abstract Memory:** Compresses conversation history to prevent token bloat across multi-turn sessions
 
@@ -55,14 +55,14 @@ cd frontend && python3 -m http.server 3000
 
 - `StateMatrix` — In-memory tax state representation; immutable state matrix for calculations
 - `RuleEngine` — Configuration-driven compliance verification (rules in `config/rules_2026.json`)
-- `GeminiClient` — HTTPS client for Gemini Pro API with strict JSON schema enforcement
+- `GroqClient` — HTTPS client for Groq API with strict JSON schema enforcement
 - `GSTRGenerator` — CSV serialization for GSTR-1 B2B, HSN Summary, and GSTR-3B
 - `WebSocketServer` — Crow-based endpoint router for full-duplex communication
 
 ### Data Flow
 
 1. Client uploads invoice (Base64) via WebSocket
-2. Backend forwards to Gemini Pro with strict schema
+2. Backend forwards to Groq with strict schema
 3. Extracted data validated against `config/rules_2026.json`
 4. Gaps trigger targeted conversational prompts
 5. Complete data serialized to GST Offline Utility CSV format
@@ -90,8 +90,8 @@ cd frontend && python3 -m http.server 3000
 ```bash
 PORT=8080
 HOST=0.0.0.0
-GEMINI_API_KEY=<your_key>
-GEMINI_MODEL=gemini-3.7-flash
+GROQ_API_KEY=<your_key>
+GROQ_MODEL=llama-3.2-11b-vision-preview
 DATABASE_PATH=./database/tax_sessions.db
 RULES_CONFIG_PATH=./config/rules_2026.json
 ```
@@ -107,4 +107,4 @@ RULES_CONFIG_PATH=./config/rules_2026.json
 
 - All financial data stored locally in SQLite (zero cloud storage)
 - API keys via environment variables only (never committed)
-- Gemini API receives only targeted invoice buffers for extraction
+- Groq API receives only targeted invoice buffers for extraction

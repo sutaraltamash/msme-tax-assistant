@@ -1,10 +1,10 @@
-// smoke_winhttp.cpp — minimal live smoke test for WinHTTP TLS + Gemini wire.
+// smoke_winhttp.cpp — minimal live smoke test for WinHTTP TLS + Groq wire.
 //
-// Sends the smallest possible generateContent request (text-only, no image,
+// Sends the smallest possible chat/completions request (text-only, no image,
 // temperature=0) and checks:
-//   1. TLS handshake with generativelanguage.googleapis.com succeeds.
+//   1. TLS handshake with api.groq.com succeeds.
 //   2. HTTP 200 is returned (not 401/403/5xx).
-//   3. Response body is valid JSON with candidates[].
+//   3. Response body is valid JSON with choices[0].message.content.
 //
 // Compile (one-shot, no CMake):
 //   g++ -std=c++17 -I backend/include smoke_winhttp.cpp -lwinhttp -o smoke_winhttp.exe
@@ -31,12 +31,13 @@ static std::wstring narrow_to_wide(const std::string& s)
 
 static std::string do_post(const std::string& api_key, const std::string& model)
 {
-    // Minimal generateContent payload — text prompt only (no image inlining).
+    // Minimal chat/completions payload — text prompt only (no image inlining).
     const std::string body =
-        "{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"Say \\\"ok\\\"\"}]}],"
-        "\"generationConfig\":{\"temperature\":0}}";
+        "{\"model\":\"llama-3.2-11b-vision-preview\","
+        "\"messages\":[{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"Say \\\"ok\\\"\"}}],"
+        "\"temperature\":0}";
 
-    const std::string path = "/v1beta/models/" + model + ":generateContent";
+    const std::string path = "/openai/v1/chat/completions";
 
     HINTERNET session = WinHttpOpen(L"smoke_test/1.0",
                                     WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
@@ -45,7 +46,7 @@ static std::string do_post(const std::string& api_key, const std::string& model)
     if (!session) throw std::runtime_error("WinHttpOpen failed");
 
     HINTERNET conn = WinHttpConnect(session,
-                                    L"generativelanguage.googleapis.com",
+                                    L"api.groq.com",
                                     INTERNET_DEFAULT_HTTPS_PORT, 0);
     if (!conn) { WinHttpCloseHandle(session); throw std::runtime_error("WinHttpConnect failed"); }
 
@@ -58,8 +59,8 @@ static std::string do_post(const std::string& api_key, const std::string& model)
                                        WINHTTP_FLAG_SECURE);
     if (!req) { WinHttpCloseHandle(conn); WinHttpCloseHandle(session); throw std::runtime_error("WinHttpOpenRequest failed"); }
 
-    // Auth header: x-goog-api-key: <api_key>
-    const std::wstring auth_hdr = L"x-goog-api-key: " + narrow_to_wide(api_key);
+    // Auth header: Authorization: Bearer <api_key>
+    const std::wstring auth_hdr = L"Authorization: Bearer " + narrow_to_wide(api_key);
     WinHttpAddRequestHeaders(req, auth_hdr.c_str(), (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD);
     WinHttpAddRequestHeaders(req, L"Content-Type: application/json", (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD);
 
@@ -103,6 +104,15 @@ static std::string do_post(const std::string& api_key, const std::string& model)
         throw std::runtime_error("HTTP " + std::to_string(status) + ": " +
                                   response_body.substr(0, 512));
     }
+
+    // Quick structural check: must have "choices[0].message.content".
+    if (response_body.find("\"choices\"") == std::string::npos)
+    {
+        std::cerr << "[smoke] WARN: 200 but no \"choices\" in body:\n"
+                  << response_body.substr(0, 512) << "\n";
+        return 2;
+    }
+
     return response_body;
 }
 
@@ -114,22 +124,22 @@ int main(int argc, char* argv[])
         return 1;
     }
     const std::string api_key = argv[1];
-    const std::string model   = argc >= 3 ? argv[2] : "gemini-3.7-flash";
+    const std::string model   = argc >= 3 ? argv[2] : "llama-3.2-11b-vision-preview";
 
-    std::cout << "[smoke] target: generativelanguage.googleapis.com (HTTPS)\n";
+    std::cout << "[smoke] target: api.groq.com (HTTPS)\n";
     std::cout << "[smoke] model : " << model << "\n";
     std::cout << "[smoke] key   : <configured>\n";
-    std::cout << "[smoke] sending minimal generateContent request...\n";
+    std::cout << "[smoke] sending minimal chat/completions request...\n";
 
     try
     {
         const std::string body = do_post(api_key, model);
         std::cout << "[smoke] HTTP 200 OK — TLS handshake + wire succeeded.\n";
 
-        // Quick structural check: must have "candidates".
-        if (body.find("\"candidates\"") == std::string::npos)
+        // Quick structural check: must have "choices[0].message.content".
+        if (body.find("\"choices\"") == std::string::npos)
         {
-            std::cerr << "[smoke] WARN: 200 but no \"candidates\" in body:\n"
+            std::cerr << "[smoke] WARN: 200 but no \"choices\" in body:\n"
                       << body.substr(0, 512) << "\n";
             return 2;
         }

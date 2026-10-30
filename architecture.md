@@ -7,7 +7,7 @@ An enterprise-grade, cloud-hybrid compliance assistant engineered specifically f
 Traditional tax automation pipelines rely on disjointed OCR-to-NER engines that suffer from cascading recognition errors, or generic cloud LLM wrappers that exhibit context drift and mathematical hallucinations.  
 This platform solves both failure modes through a **Decoupled Cloud-Hybrid Architecture**:
 
-* **Probabilistic Visual Extraction & Reasoning:** Offloaded to Google's frontier multimodal reasoning model (Gemini Pro) via secure, structured API calls, extracting spatial invoice data directly into strict JSON schemas without an intermediate OCR layer.  
+* **Probabilistic Visual Extraction & Reasoning:** Offloaded to Groq's frontier multimodal reasoning model (Llama Vision) via secure, structured API calls, extracting spatial invoice data directly into strict JSON schemas without an intermediate OCR layer.  
 * **Deterministic Calculation & State Tracking:** Handled exclusively by a high-performance C++ backend. All mathematical splits (CGST, SGST, IGST), threshold verifications, and compliance checks are executed in native code using an immutable State Matrix, guaranteeing 0% mathematical hallucination.  
 * **Rolling Abstract Memory Engine:** To prevent token bloat and context loss across multi-turn conversations, the C++ backend periodically compresses conversational history into an asynchronous 3-sentence summary, injecting only the immutable ledger and latest state into subsequent reasoning prompts.
 
@@ -34,7 +34,7 @@ This platform solves both failure modes through a **Decoupled Cloud-Hybrid Archi
     │              │  
     │ (2) Ingest   │ (3) Forward Payload with Strict Schema  
     ▼              ▼  
-\[ SQLite3 DB \]  \[ Gemini Pro Reasoning API \]  
+\[ SQLite3 DB \]  \[ Groq Reasoning API \]  
 (tax\_sessions)     │  
     ▲              │ (4) Return Strict JSON Data  
     │              ▼  
@@ -79,14 +79,14 @@ tax\_assistant\_project/
     │   ├── sqlite3.h         \# SQLite3 C/C++ interface  
     │   ├── StateMatrix.hpp   \# In-memory tax state representation & storage  
     │   ├── RuleEngine.hpp    \# Dynamic JSON rule verification engine  
-    │   ├── GeminiClient.hpp  \# HTTPS client for Gemini Pro reasoning API  
+    │   ├── GroqClient.hpp  \# HTTPS client for Groq reasoning API  
     │   ├── GSTRGenerator.hpp \# CSV serialization for GSTR-1 & GSTR-3B  
     │   └── WebSocketServer.hpp \# Crow WebSocket endpoint router  
     └── src/  
         ├── main.cpp          \# Application entrypoint & initialization  
         ├── StateMatrix.cpp  
         ├── RuleEngine.cpp  
-        ├── GeminiClient.cpp  
+        ├── GroqClient.cpp  
         ├── GSTRGenerator.cpp  
         └── WebSocketServer.cpp
 
@@ -130,9 +130,9 @@ sudo apt-get install \-y build-essential cmake libcurl4-openssl-dev libsqlite3-d
 >    HOST=0.0.0.0
 
 >    \# AI Integration Settings  
->    GEMINI\_API\_KEY=your\_google\_ai\_studio\_api\_key\_here  
->    GEMINI\_MODEL=gemini-3.7-flash  
->    GEMINI\_API\_ENDPOINT=https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent
+>    GROQ\_API\_KEY=your\_groq\_api\_key\_here  
+>    GROQ\_MODEL=llama-3.2-11b-vision-preview  
+>    GROQ\_API\_ENDPOINT=https://api.groq.com/openai/v1/chat/completions
 
 >    \# File Paths  
 >    DATABASE\_PATH=./database/tax\_sessions.db  
@@ -176,7 +176,7 @@ Plaintext
 > 1. **Document Ingestion:**  
 >    Upload an invoice image or PDF via the drag-and-drop boundary. The file is encoded to Base64 in file\_handler.js and transmitted through the WebSocket gateway.  
 > 2. **Extraction:**  
->    GeminiClient.cpp queries the multimodal endpoint with strict JSON schema instructions. Extracted invoice properties (GSTINs, HSN codes, invoice dates, base values, tax totals) are returned to the C++ core.  
+>    GroqClient.cpp queries the multimodal endpoint with strict JSON schema instructions. Extracted invoice properties (GSTINs, HSN codes, invoice dates, base values, tax totals) are returned to the C++ core.  
 > 3. **Validation & State Check:**  
 >    RuleEngine.cpp validates the extracted properties against config/rules\_2026.json.  
 > 4. **Targeted Interrogation:**  
@@ -242,5 +242,5 @@ Plaintext
 ## **11\. Security & Privacy**
 
 * **Zero Cloud Storage of Financial Ledgers:** All user records, parsed structs, and rolling context logs reside exclusively on the host server in an embedded SQLite database (tax\_sessions.db).  
-* **Transient API Usage:** Outbound requests to the Gemini API contain only the targeted invoice buffer for immediate feature extraction; no long-term external data retention is utilized.  
+* **Transient API Usage:** Outbound requests to the Groq API contain only the targeted invoice buffer for immediate feature extraction; no long-term external data retention is utilized.  
 * **Credential Isolation:** API keys are injected at runtime via environment variables and are excluded from version control via .gitignore.

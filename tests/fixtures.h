@@ -1,5 +1,5 @@
 // fixtures.h — shared invoice-document fixtures for the deterministic-core
-// unit tests. Each builder mirrors the config/gemini_schema.json contract and
+// unit tests. Each builder mirrors the config/groq_schema.json contract and
 // is used verbatim by statematrix_test.cpp and ruleengine_test.cpp.
 //
 // The three base documents exercise the extraction-space grid:

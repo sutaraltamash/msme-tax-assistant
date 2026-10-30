@@ -4,18 +4,18 @@
 // The decoupled-cloud-hybrid architecture (architecture.md §1) forbids the
 // deterministic layer from talking to any cloud or network service directly.
 // Extracting a taxable structure from an uploaded invoice buffer is therefore
-// the one interaction that borrows a probabilistic model (Gemini Pro). That
+// the one interaction that borrows a probabilistic model (Groq). That
 // interaction is isolated behind this interface so that:
 //
 //   * Step F ships a deterministic MockExtractor (no network) that returns a
 //     controlled, schema-conforming document — the seam is testable end-to-end
 //     before any live API key exists.
-//   * Step G's GeminiClient implements THIS interface and is injected at
+//   * Step G's GroqClient implements THIS interface and is injected at
 //     startup, swapping the mock for live extraction without touching the
 //     pipeline, persistence, or WebSocket layers.
 //
 // Implementations MUST return a nlohmann::json document conforming to
-// config/gemini_schema.json (validated natively by StateMatrix) and MUST throw
+// config/groq_schema.json (validated natively by StateMatrix) and MUST throw
 // std::runtime_error on extraction failure rather than returning partial data.
 // ============================================================================
 

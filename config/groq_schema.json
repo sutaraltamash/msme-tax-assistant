@@ -1,13 +1,11 @@
 {
   "$schema_description": "Strict JSON contract for invoice extraction. Gemini Pro (Phase 2, live mode) and the offline MockExtractor (Phase 1) MUST return a document conforming to this tree. Field paths here are referenced by config/rules_2026.json and validated natively by StateMatrix using nlohmann/json type-checking (no external json-schema-validator dependency).",
-
   "meta": {
     "format_version": "1.0",
     "currency": "INR",
     "date_format": "YYYY-MM-DD",
     "amount_scale": 2
   },
-
   "supplier": {
     "$type": "object",
     "$required": true,
@@ -16,7 +14,6 @@
     "address_state": { "$type": "string", "$required": true, "description": "Two-letter GST state code (e.g. MH, KA) of the supplier's principal place of business." },
     "aato_crore":  { "$type": "number",  "$required": false, "description": "Aggregate Annual Turnover of the supplier in INR Crore from the prior completed FY. Absent if unknown; drives e-invoicing checks (R-EINV-001)." }
   },
-
   "buyer": {
     "$type": "object",
     "$required": false,
@@ -26,7 +23,6 @@
     "address_state": { "$type": "string", "$required": false, "description": "Two-letter GST state code of the buyer's place of business." },
     "registered":    { "$type": "boolean", "$required": false, "description": "true if buyer holds a valid GSTIN, else false." }
   },
-
   "invoice": {
     "$type": "object",
     "$required": true,
@@ -39,7 +35,6 @@
     "irn":               { "$type": "string",  "$required": false, "description": "The 64-character IRN when irn_present." },
     "hsn_string":        { "$type": "string",  "$required": true,  "description": "Comma-delimited HSN codes found (R-HSN-005 digit check)." },
     "base_value":        { "$type": "number",  "$required": true,  "description": "Total taxable base value in INR before tax (sum of line item base values)." },
-
     "line_items": {
       "$type": "array",
       "$required": true,
@@ -52,7 +47,6 @@
         "tax_rate":    { "$type": "number",  "$required": true,  "description": "Combined GST rate percent (e.g. 18)." }
       }
     },
-
     "tax_breakdown": {
       "$type": "object",
       "$required": true,
@@ -64,18 +58,14 @@
       "has_igst":        { "$type": "boolean", "$required": true,  "description": "Computed: any IGST present." },
       "total_tax":       { "$type": "number",  "$required": true,  "description": "Sum of all tax heads in INR." }
     },
-
     "total_value": { "$type": "number", "$required": true, "description": "Grand total = base_value + total_tax in INR." }
   },
-
   "irp": {
     "$type": "object",
     "$required": false,
     "description": "IRP filing metadata for e-invoiced transactions (R-IRP-002).",
-    "reported_on":          { "$type": "string", "$required": false, "description": "IRP acknowledgment date YYYY-MM-DD." },
-    "acknowledgment_no":    { "$type": "string", "$required": false, "description": "IRP acknowledgement number when available." }
+    "reported_on": { "$type": "string", "$required": false, "description": "IRP acknowledgment date YYYY-MM-DD." }
   },
-
   "extraction_confidence": {
     "$type": "object",
     "$required": false,

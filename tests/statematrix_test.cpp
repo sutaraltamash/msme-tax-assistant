@@ -2,7 +2,7 @@
 //
 // Covers: valid INTRA/INTER documents, tax-split math, per-head rounding edge
 // cases, snapshot immutability, schema type-walking (inline + the real
-// config/gemini_schema.json), and invalid JSON structures.
+// config/groq_schema.json), and invalid JSON structures.
 
 #include <fstream>
 #include <sstream>
@@ -239,12 +239,12 @@ TEST(schema_walk_inline_type_checks)
                                               schema, errs));
 }
 
-TEST(schema_walk_against_real_gemini_schema)
+TEST(schema_walk_against_real_groq_schema)
 {
-    std::ifstream in(GEMINI_SCHEMA_PATH);
+    std::ifstream in(GROQ_SCHEMA_PATH);
     if (!in)
     {
-        std::printf("  SKIP: cannot open %s\n", GEMINI_SCHEMA_PATH);
+        std::printf("  SKIP: cannot open %s\n", GROQ_SCHEMA_PATH);
         return;
     }
     std::ostringstream ss;
@@ -304,6 +304,6 @@ RUN_TEST(invalid_line_items_not_array_throws),
 RUN_TEST(invalid_missing_irn_when_present_throws),
 RUN_TEST(invalid_line_rate_must_be_number),
 RUN_TEST(schema_walk_inline_type_checks),
-RUN_TEST(schema_walk_against_real_gemini_schema),
+RUN_TEST(schema_walk_against_real_groq_schema),
 RUN_TEST(summary_totals_line_up),
 TESTS_END

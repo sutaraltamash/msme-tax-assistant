@@ -11,7 +11,7 @@ PRAGMA foreign_keys = ON;
 -- ---------------------------------------------------------------------------
 -- A reasoning + filing session. Owns the rolling abstract memory: the C++
 -- backend condenses earlier turns into an asynchronous 3-sentence JSON summary
--- stored in rolling_abstract to keep subsequent Gemini prompts compact.
+-- stored in rolling_abstract to keep subsequent Groq prompts compact.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS tax_sessions (
     session_id          TEXT PRIMARY KEY,
@@ -25,8 +25,8 @@ CREATE TABLE IF NOT EXISTS tax_sessions (
 );
 
 -- ---------------------------------------------------------------------------
--- One ingested invoice document per session (extracted via Gemini/Mock).
--- Stored fields mirror config/gemini_schema.json so persistence maps 1:1.
+-- One ingested invoice document per session (extracted via Groq/Mock).
+-- Stored fields mirror config/groq_schema.json so persistence maps 1:1.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS invoices (
     invoice_id          INTEGER PRIMARY KEY AUTOINCREMENT,

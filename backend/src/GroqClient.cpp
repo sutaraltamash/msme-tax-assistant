@@ -1,8 +1,8 @@
 // ============================================================================
-// GeminiClient.cpp — see header.
+// GroqClient.cpp — see header.
 // ============================================================================
 
-#include "GeminiClient.hpp"
+#include "GroqClient.hpp"
 
 #include <chrono>
 #include <stdexcept>
@@ -16,22 +16,6 @@ namespace tax {
 
 namespace
 {
-
-// The model id is user-controlled (GEMINI_MODEL); URL-component it into a
-// defensively-escaped path segment so it cannot smuggle query strings etc.
-std::string urlComponent(const std::string& raw)
-{
-    std::string out;
-    out.reserve(raw.size());
-    for (const unsigned char c : raw)
-    {
-        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                        (c >= '0' && c <= '9') || c == '-' || c == '.' ||
-                        c == '_';
-        out += ok ? static_cast<char>(c) : '-';
-    }
-    return out;
-}
 
 // Strip a ```json ... ``` (or ``` ... ```) code fence the model may wrap the
 // JSON in, then trim surrounding whitespace.
@@ -72,10 +56,10 @@ std::string stripCodeFence(const std::string& text)
 
 } // namespace
 
-GeminiClient::GeminiClient(std::vector<std::string> api_keys, std::string model,
-                           std::unique_ptr<IHttpClient> http,
-                           std::string schema_json,
-                           unsigned long timeout_seconds)
+GroqClient::GroqClient(std::vector<std::string> api_keys, std::string model,
+                       std::unique_ptr<IHttpClient> http,
+                       std::string schema_json,
+                       unsigned long timeout_seconds)
     : api_keys_(std::move(api_keys)),
       key_index_(0),
       model_(std::move(model)),
@@ -84,27 +68,27 @@ GeminiClient::GeminiClient(std::vector<std::string> api_keys, std::string model,
 {
     if (api_keys_.empty())
     {
-        throw std::runtime_error("GeminiClient requires at least one GEMINI_API_KEY");
+        throw std::runtime_error("GroqClient requires at least one GROQ_API_KEY");
     }
     for (const auto& key : api_keys_)
     {
         if (key.empty())
         {
-            throw std::runtime_error("GeminiClient requires non-empty API keys");
+            throw std::runtime_error("GroqClient requires non-empty API keys");
         }
     }
     if (model_.empty())
     {
-        throw std::runtime_error("GeminiClient requires a non-empty GEMINI_MODEL");
+        throw std::runtime_error("GroqClient requires a non-empty GROQ_MODEL");
     }
     if (!http_)
     {
-        throw std::runtime_error("GeminiClient requires a non-null IHttpClient");
+        throw std::runtime_error("GroqClient requires a non-null IHttpClient");
     }
 
     if (schema_json.empty())
     {
-        throw std::runtime_error("GeminiClient requires the gemini schema JSON");
+        throw std::runtime_error("GroqClient requires the schema JSON");
     }
     try
     {
@@ -112,7 +96,7 @@ GeminiClient::GeminiClient(std::vector<std::string> api_keys, std::string model,
     }
     catch (const json::parse_error&)
     {
-        throw std::runtime_error("GeminiClient schema JSON failed to parse");
+        throw std::runtime_error("GroqClient schema JSON failed to parse");
     }
 
     schema_prompt_text_ =
@@ -135,22 +119,29 @@ GeminiClient::GeminiClient(std::vector<std::string> api_keys, std::string model,
             "or false as the schema allows; never invent data.\n");
 }
 
-GeminiClient::GeminiClient(std::string api_key, std::string model,
-                           std::unique_ptr<IHttpClient> http,
-                           std::string schema_json,
-                           unsigned long timeout_seconds)
-    : GeminiClient(std::vector<std::string>{std::move(api_key)},
-                   std::move(model), std::move(http),
-                   std::move(schema_json), timeout_seconds)
+GroqClient::GroqClient(std::string api_key, std::string model,
+                       std::unique_ptr<IHttpClient> http,
+                       std::string schema_json,
+                       unsigned long timeout_seconds)
+    : GroqClient(std::vector<std::string>{std::move(api_key)},
+                 std::move(model), std::move(http),
+                 std::move(schema_json), timeout_seconds)
 {
 }
 
-json GeminiClient::extractFromBuffer(const std::string& base64_data,
-                                     const std::string& mime_type) const
+json GroqClient::extractFromBuffer(const std::string& base64_data,
+                                   const std::string& mime_type) const
 {
+    // Groq vision does not parse raw PDF binaries — fail fast.
+    if (mime_type == "application/pdf")
+    {
+        throw std::runtime_error(
+            "Groq Vision requires images. Please convert your invoice to a "
+            "PNG or JPEG for this demo.");
+    }
+
     const std::string url =
-        std::string("https://generativelanguage.googleapis.com/v1beta/models/") +
-        urlComponent(model_) + ":generateContent";
+        "https://api.groq.com/openai/v1/chat/completions";
 
     const std::string request_payload = buildRequest(base64_data, mime_type).dump();
 
@@ -164,9 +155,11 @@ json GeminiClient::extractFromBuffer(const std::string& base64_data,
 
         resp = http_->postJson(url, current_key, request_payload, timeout_seconds_);
 
-        if (resp.status == 503 && attempt < kMaxRetries)
+        if ((resp.status == 503 || resp.status == 429) && attempt < kMaxRetries)
         {
-            std::this_thread::sleep_for(std::chrono::seconds(2));
+            // Exponential backoff: 2s, 4s, 8s
+            const int delay = 2 << attempt;
+            std::this_thread::sleep_for(std::chrono::seconds(delay));
             continue;
         }
         break;
@@ -174,7 +167,7 @@ json GeminiClient::extractFromBuffer(const std::string& base64_data,
 
     if (resp.status == 0)
     {
-        throw std::runtime_error("Gemini request failed (transport): " +
+        throw std::runtime_error("Groq request failed (transport): " +
                                  resp.error);
     }
     if (resp.status < 200 || resp.status >= 300)
@@ -191,7 +184,7 @@ json GeminiClient::extractFromBuffer(const std::string& base64_data,
         {
             brief = resp.body.substr(0, 256);
         }
-        throw std::runtime_error("Gemini API error (HTTP " +
+        throw std::runtime_error("Groq API error (HTTP " +
                                  std::to_string(resp.status) + "): " + brief);
     }
 
@@ -204,36 +197,41 @@ json GeminiClient::extractFromBuffer(const std::string& base64_data,
         const std::string first =
             errors.empty() ? "unknown" : errors.front();
         throw std::runtime_error(
-            "Gemini returned a document that did not pass the schema contract: " +
+            "Groq returned a document that did not pass the schema contract: " +
             first);
     }
     return doc;
 }
 
-json GeminiClient::buildRequest(const std::string& base64_data,
-                                const std::string& mime_type) const
+json GroqClient::buildRequest(const std::string& base64_data,
+                              const std::string& mime_type) const
 {
+    // Build the data-URL for the image.
+    const std::string data_url =
+        std::string("data:") + mime_type + ";base64," + base64_data;
+
     return json{
-        {"system_instruction", {{"parts", json::array({{{"text", schema_prompt_text_}}})}}},
-        {"contents",
+        {"model", model_},
+        {"messages",
          json::array({json{
              {"role", "user"},
-             {"parts",
+             {"content",
               json::array({
-                  {{"text",
-                    "Extract the GST invoice from the uploaded file "
+                  {{"type", "text"},
+                   {"text",
+                    schema_prompt_text_ +
+                    "\n\nExtract the GST invoice from the uploaded file "
                     "now. Respond with a single JSON object conforming to the "
-                    "schema in your instructions."}},
-                  {{"inline_data", {{"mime_type", mime_type},
-                                    {"data", base64_data}}}},
+                    "schema above."}},
+                  {{"type", "image_url"},
+                   {"image_url", {{"url", data_url}}}},
               })},
          }})},
-        {"generationConfig",
-         {{"responseMimeType", "application/json"}, {"temperature", 0}}},
+        {"temperature", 0},
     };
 }
 
-json GeminiClient::parseSuccessResponse(const std::string& raw_body) const
+json GroqClient::parseSuccessResponse(const std::string& raw_body) const
 {
     json body;
     try
@@ -242,45 +240,41 @@ json GeminiClient::parseSuccessResponse(const std::string& raw_body) const
     }
     catch (const json::parse_error& e)
     {
-        throw std::runtime_error(std::string("Gemini response was not valid JSON: ") +
+        throw std::runtime_error(std::string("Groq response was not valid JSON: ") +
                                  e.what());
     }
 
-    const auto hasCandidates = body.contains("candidates") &&
-                               body["candidates"].is_array() &&
-                               !body["candidates"].empty();
-    if (!hasCandidates)
+    const auto hasChoices = body.contains("choices") &&
+                            body["choices"].is_array() &&
+                            !body["choices"].empty();
+    if (!hasChoices)
     {
         throw std::runtime_error(
-            "Gemini response had no non-empty candidates[] (was extraction "
-            "blocked by safety filters? check the response log)");
+            "Groq response had no non-empty choices[] (was extraction "
+            "blocked by content filters? check the response log)");
     }
-    const auto& parts = body["candidates"][0]["content"]["parts"];
-    if (!parts.is_array() || parts.empty() || !parts[0].is_object())
+    const auto& message = body["choices"][0]["message"];
+    if (!message.is_object() || !message.contains("content") ||
+        !message["content"].is_string())
     {
         throw std::runtime_error(
-            "Gemini response candidates[0].content.parts[0] was missing");
-    }
-    if (!parts[0].contains("text") || !parts[0]["text"].is_string())
-    {
-        throw std::runtime_error(
-            "Gemini response part had no text field");
+            "Groq response choices[0].message.content was missing or not a string");
     }
 
-    std::string text = stripCodeFence(parts[0]["text"].get<std::string>());
+    std::string text = stripCodeFence(message["content"].get<std::string>());
     try
     {
         json doc = json::parse(text);
         if (!doc.is_object())
         {
             throw std::runtime_error(
-                "Gemini returned non-object JSON (expected an invoice document)");
+                "Groq returned non-object JSON (expected an invoice document)");
         }
         return doc;
     }
     catch (const json::parse_error& e)
     {
-        throw std::runtime_error(std::string("Gemini extraction text was not valid JSON: ") +
+        throw std::runtime_error(std::string("Groq extraction text was not valid JSON: ") +
                                  e.what());
     }
 }

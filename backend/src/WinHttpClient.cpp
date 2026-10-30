@@ -8,7 +8,7 @@
 //
 // Security posture: only https:// URLs use the wire; a bare "http://" target
 // is accepted with TLS off strictly so local test doubles can be exercised —
-// the production endpoint in newGeminiClient() is always https.
+// the production endpoint in makeExtractor() is always https.
 // ============================================================================
 
 #include "HttpClient.hpp"
@@ -202,7 +202,7 @@ HttpResponse WinHttpClient::postJson(const std::string& url,
 
     const std::wstring headers =
         L"Content-Type: application/json\r\n"
-        L"x-goog-api-key: " +
+        L"Authorization: Bearer " +
         widen(bearer_token) + L"\r\n";
 
     if (!WinHttpSendRequest(request.get(), headers.c_str(),

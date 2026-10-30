@@ -7,7 +7,7 @@ set(TEST_SOURCES
   gstrgenerator_test.cpp
   repository_test.cpp
   pipeline_test.cpp
-  geminiclient_test.cpp
+  groqclient_test.cpp
 )
 
 foreach(test_src ${TEST_SOURCES})
@@ -18,10 +18,10 @@ foreach(test_src ${TEST_SOURCES})
   target_link_libraries(${test_name} PRIVATE tax_core)
 
   # Absolute source paths of the real config files, handed to tests that
-  # exercise validateAgainstSchema (gemini_schema.json) and the RuleEngine
+  # exercise validateAgainstSchema (groq_schema.json) and the RuleEngine
   # (rules_2026.json).
   target_compile_definitions(${test_name} PRIVATE
-    GEMINI_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../config/gemini_schema.json"
+    GROQ_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../config/groq_schema.json"
     RULES_CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../config/rules_2026.json"
   )
 
