@@ -27,10 +27,8 @@
 
 #pragma once
 
-#include <atomic>
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "HttpClient.hpp"
 #include "IExtractor.hpp"
@@ -43,17 +41,12 @@ using nlohmann::json;
 class GroqClient : public IExtractor
 {
 public:
-    //   api_keys    — list of Groq Cloud API keys (for round-robin rotation).
+    //   api_key     — single Groq Cloud API key.
     //   model       — model id, e.g. "llama-3.2-11b-vision-preview".
     //   http        — transport seam (injectable for tests).
     //   schema_json — verbatim contents of config/groq_schema.json; embedded
     //                 into the prompt and parsed for response validation.
-    // Throws std::runtime_error on empty api_keys or an unparsable schema.
-    GroqClient(std::vector<std::string> api_keys, std::string model,
-               std::unique_ptr<IHttpClient> http, std::string schema_json,
-               unsigned long timeout_seconds = 60);
-
-    // Convenience constructor for a single API key.
+    // Throws std::runtime_error on an empty API key or unparsable schema.
     GroqClient(std::string api_key, std::string model,
                std::unique_ptr<IHttpClient> http, std::string schema_json,
                unsigned long timeout_seconds = 60);
@@ -76,8 +69,7 @@ private:
     // document. Throws std::runtime_error on any structural failure.
     json parseSuccessResponse(const std::string& raw_body) const;
 
-    std::vector<std::string> api_keys_;
-    mutable std::atomic<std::size_t> key_index_{0};
+    std::string api_key_;
     std::string model_;
     std::unique_ptr<IHttpClient> http_;
     json schema_;            // parsed config/groq_schema.json (for validation)

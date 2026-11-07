@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · GSTnode</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gray-100 text-gray-900">
+  <header class="absolute left-0 top-0 p-6 sm:p-8">
+    <a href="index.html" class="text-xl font-bold tracking-tight text-blue-700">GSTnode</a>
+  </header>
+  <main class="flex min-h-screen items-center justify-center px-4 py-20">
+    <section class="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl sm:p-10">
+      <h1 class="text-3xl font-bold tracking-tight">Welcome back</h1>
+      <p class="mt-2 text-sm text-gray-500">Sign in to continue to your workspace.</p>
+      <form id="login-form" class="mt-8 space-y-5">
+        <div>
+          <label for="username" class="mb-1.5 block text-sm font-medium">Username</label>
+          <input id="username" name="username" autocomplete="username" required placeholder="Your username" class="w-full rounded-lg border border-gray-300 px-3.5 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100">
+        </div>
+        <div>
+          <label for="email" class="mb-1.5 block text-sm font-medium">Email</label>
+          <input id="email" name="email" type="email" autocomplete="email" required placeholder="you@example.com" class="w-full rounded-lg border border-gray-300 px-3.5 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100">
+        </div>
+        <div>
+          <label for="password" class="mb-1.5 block text-sm font-medium">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Enter your password" class="w-full rounded-lg border border-gray-300 px-3.5 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100">
+        </div>
+        <div class="flex items-center justify-between text-sm">
+          <label class="flex items-center gap-2 text-gray-600"><input name="remember" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">Remember for 30 days</label>
+          <a href="#" class="font-medium text-blue-700 hover:text-blue-800">Forgot password</a>
+        </div>
+        <p id="login-error" class="hidden text-sm text-red-600" role="alert"></p>
+        <button type="submit" class="w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">Sign In</button>
+      </form>
+      <div class="my-5 flex items-center gap-3 text-xs text-gray-400"><span class="h-px flex-1 bg-gray-200"></span>OR<span class="h-px flex-1 bg-gray-200"></span></div>
+      <button id="guest-button" type="button" class="w-full rounded-lg border border-gray-300 px-4 py-3 font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">Continue as Guest (Test Mode)</button>
+    </section>
+  </main>
+  <script>
+    const form = document.getElementById('login-form');
+    const error = document.getElementById('login-error');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      error.classList.add('hidden');
+      const data = new FormData(form);
+      try {
+        const response = await fetch('/api/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: data.get('username'), email: data.get('email'), password: data.get('password') })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.token) throw new Error('Unable to sign in. Check your credentials and try again.');
+        sessionStorage.setItem('token', result.token);
+        window.location.href = 'dashboard.html';
+      } catch (err) {
+        error.textContent = err.message || 'Sign in failed. Please try again.';
+        error.classList.remove('hidden');
+      }
+    });
+    document.getElementById('guest-button').addEventListener('click', () => {
+      const uuid = crypto.randomUUID();
+      sessionStorage.setItem('token', uuid);
+      window.location.href = 'dashboard.html';
+    });
+  </script>
+</body>
+</html>

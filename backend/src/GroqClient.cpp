@@ -56,26 +56,18 @@ std::string stripCodeFence(const std::string& text)
 
 } // namespace
 
-GroqClient::GroqClient(std::vector<std::string> api_keys, std::string model,
+GroqClient::GroqClient(std::string api_key, std::string model,
                        std::unique_ptr<IHttpClient> http,
                        std::string schema_json,
                        unsigned long timeout_seconds)
-    : api_keys_(std::move(api_keys)),
-      key_index_(0),
+    : api_key_(std::move(api_key)),
       model_(std::move(model)),
       http_(std::move(http)),
       timeout_seconds_(timeout_seconds)
 {
-    if (api_keys_.empty())
+    if (api_key_.empty())
     {
-        throw std::runtime_error("GroqClient requires at least one GROQ_API_KEY");
-    }
-    for (const auto& key : api_keys_)
-    {
-        if (key.empty())
-        {
-            throw std::runtime_error("GroqClient requires non-empty API keys");
-        }
+        throw std::runtime_error("GroqClient requires a non-empty GROQ_API_KEY");
     }
     if (model_.empty())
     {
@@ -119,16 +111,6 @@ GroqClient::GroqClient(std::vector<std::string> api_keys, std::string model,
             "or false as the schema allows; never invent data.\n");
 }
 
-GroqClient::GroqClient(std::string api_key, std::string model,
-                       std::unique_ptr<IHttpClient> http,
-                       std::string schema_json,
-                       unsigned long timeout_seconds)
-    : GroqClient(std::vector<std::string>{std::move(api_key)},
-                 std::move(model), std::move(http),
-                 std::move(schema_json), timeout_seconds)
-{
-}
-
 json GroqClient::extractFromBuffer(const std::string& base64_data,
                                    const std::string& mime_type) const
 {
@@ -149,11 +131,7 @@ json GroqClient::extractFromBuffer(const std::string& base64_data,
     constexpr int kMaxRetries = 3;
     for (int attempt = 0; attempt <= kMaxRetries; ++attempt)
     {
-        // Round-robin selection of API key
-        const std::size_t idx = key_index_.fetch_add(1, std::memory_order_relaxed);
-        const std::string& current_key = api_keys_[idx % api_keys_.size()];
-
-        resp = http_->postJson(url, current_key, request_payload, timeout_seconds_);
+        resp = http_->postJson(url, api_key_, request_payload, timeout_seconds_);
 
         if ((resp.status == 503 || resp.status == 429) && attempt < kMaxRetries)
         {

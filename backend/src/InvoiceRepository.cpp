@@ -31,6 +31,13 @@ CREATE TABLE IF NOT EXISTS tax_sessions (
     updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY,
+    username TEXT UNIQUE,
+    email TEXT UNIQUE,
+    password_hash TEXT
+);
+
 CREATE TABLE IF NOT EXISTS invoices (
     invoice_id          INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id          TEXT NOT NULL REFERENCES tax_sessions(session_id) ON DELETE CASCADE,
@@ -189,6 +196,17 @@ InvoiceRepository::~InvoiceRepository()
 {
     if (db_) sqlite3_close(db_);
     db_ = nullptr;
+}
+
+bool InvoiceRepository::verifyUser(const std::string& username,
+                                   const std::string& email,
+                                   const std::string& password_hash) const
+{
+    Stmt s(db_, "SELECT 1 FROM users WHERE username = ? AND email = ? AND password_hash = ? LIMIT 1");
+    bindText(s.get(), 1, username);
+    bindText(s.get(), 2, email);
+    bindText(s.get(), 3, password_hash);
+    return sqlite3_step(s.get()) == SQLITE_ROW;
 }
 
 void InvoiceRepository::failClose(const std::string& what)

@@ -289,34 +289,28 @@ TEST(constructor_fails_fast_on_missing_pieces)
                                  readSchemaJson(), 30),
                  std::runtime_error);
 
-    auto fake3 = std::make_unique<FakeHttpClient>();
-    std::vector<std::string> empty_keys;
-    CHECK_THROWS(tax::GroqClient(empty_keys, "llama-3.2-11b-vision-preview",
-                                 std::move(fake3), readSchemaJson(), 30),
-                 std::runtime_error);
 }
 
-TEST(round_robin_rotates_api_keys)
+TEST(single_api_key_is_used_for_each_request)
 {
     auto fake = std::make_unique<FakeHttpClient>();
     FakeHttpClient* raw = fake.get();
-    std::vector<std::string> keys = {"key-alpha", "key-beta", "key-gamma"};
-    tax::GroqClient client(keys, "llama-3.2-11b-vision-preview",
+    tax::GroqClient client("single-key", "llama-3.2-11b-vision-preview",
                            std::move(fake), readSchemaJson(), 30);
 
     raw->reply = tax::HttpResponse{200, groqBody(defaultDoc()), ""};
 
     client.extractFromBuffer("AA==", "image/jpeg");
-    CHECK(raw->last_bearer == "key-alpha");
+    CHECK(raw->last_bearer == "single-key");
 
     client.extractFromBuffer("AA==", "image/jpeg");
-    CHECK(raw->last_bearer == "key-beta");
+    CHECK(raw->last_bearer == "single-key");
 
     client.extractFromBuffer("AA==", "image/jpeg");
-    CHECK(raw->last_bearer == "key-gamma");
+    CHECK(raw->last_bearer == "single-key");
 
     client.extractFromBuffer("AA==", "image/jpeg");
-    CHECK(raw->last_bearer == "key-alpha");
+    CHECK(raw->last_bearer == "single-key");
 }
 
 TESTS_BEGIN
@@ -331,5 +325,5 @@ TESTS_BEGIN
     RUN_TEST(refuses_schema_violating_output_at_the_boundary),
     RUN_TEST(throws_immediately_for_pdf_mime_type),
     RUN_TEST(constructor_fails_fast_on_missing_pieces),
-    RUN_TEST(round_robin_rotates_api_keys)
+    RUN_TEST(single_api_key_is_used_for_each_request)
 TESTS_END

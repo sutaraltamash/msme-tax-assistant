@@ -85,6 +85,8 @@ public:
 
     // ---- diagnostics ----------------------------------------------------------
     std::int64_t sessionCount() const;
+    bool verifyUser(const std::string& username, const std::string& email,
+                    const std::string& password_hash) const;
 
 private:
     // Reset the handle (closing any open DB) after a fatal failure.

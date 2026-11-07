@@ -95,6 +95,8 @@ public:
     // Direct access for tests/admin tooling (safe only through the same thread).
     InvoiceRepository& repository() const { return *repo_; }
     SessionStatus      statusOf(const std::string& session_id) const;
+    bool authenticate(const std::string& username, const std::string& email,
+                      const std::string& password_hash) const;
 
 private:
     struct SessionState

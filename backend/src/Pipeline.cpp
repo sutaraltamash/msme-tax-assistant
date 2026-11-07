@@ -122,6 +122,13 @@ SessionStatus Pipeline::statusOf(const std::string& session_id) const
     return it == sessions_.end() ? SessionStatus::ABANDONED : it->second.status;
 }
 
+bool Pipeline::authenticate(const std::string& username, const std::string& email,
+                            const std::string& password_hash) const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return repo_->verifyUser(username, email, password_hash);
+}
+
 // ===========================================================================
 // UPLOAD_INVOICE
 // ===========================================================================
