@@ -112,6 +112,9 @@ private:
     static json chatFrame(const std::string& role, const std::string& content,
                           const std::string& action_required);
 
+    // Build a {type:"LEDGER_UPDATE",…} frame from a validated StateMatrix.
+    json ledgerUpdateFrame(const StateMatrix& matrix);
+
     std::unique_ptr<IExtractor>                      extractor_;
     RuleEngine                                       rules_;
     std::unique_ptr<InvoiceRepository>               repo_;

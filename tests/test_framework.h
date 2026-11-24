@@ -9,6 +9,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 
 namespace testfw {
 
@@ -82,7 +83,7 @@ inline int& failures() { static int n = 0; return n; }
     {                                                                        \
         for (const auto& t : kTests)                                         \
         {                                                                    \
-            t.fn();                                                          \
+            try { t.fn(); } catch (const std::exception& e) { ++testfw::failures(); std::printf("  EXCEPTION in %s: %s\n", t.name, e.what()); }                                                          \
         }                                                                    \
         const int fails = testfw::failures();                                \
         std::printf("\n%d checks, %d failures\n", testfw::checks(), fails);  \

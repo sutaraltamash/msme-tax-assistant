@@ -3,7 +3,7 @@
  *
  * Implements architecture.md §10 message contract:
  *  - Client -> Server: UPLOAD_INVOICE, USER_REPLY, REQUEST_FILING
- *  - Server -> Client: SESSION_INIT, CHAT_MESSAGE, FILING_READY
+ *  - Server -> Client: SESSION_INIT, CHAT_MESSAGE, LEDGER_UPDATE, FILING_READY
  */
 
 class TaxWebSocketClient {
@@ -20,6 +20,7 @@ class TaxWebSocketClient {
         this.onStatusChange = options.onStatusChange || (() => {});
         this.onSessionInit = options.onSessionInit || (() => {});
         this.onChatMessage = options.onChatMessage || (() => {});
+        this.onLedgerUpdate = options.onLedgerUpdate || (() => {});
         this.onFilingReady = options.onFilingReady || (() => {});
         this.onError = options.onError || (() => {});
     }
@@ -97,6 +98,10 @@ class TaxWebSocketClient {
                         actionRequired: data.action_required || null,
                         timestamp: new Date()
                     });
+                    break;
+
+                case 'LEDGER_UPDATE':
+                    this.onLedgerUpdate(data);
                     break;
 
                 case 'FILING_READY':

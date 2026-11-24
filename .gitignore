@@ -1,0 +1,47 @@
+# --- Secrets & Local Env (Keep in VS Code, NEVER on GitHub) ---
+.env
+.env.*
+!.env.example
+
+# --- Build Outputs & CTest Artifacts ---
+build/
+Testing/
+out/
+dist/
+*.exe
+*.dll
+*.obj
+*.o
+*.pdb
+*.ilk
+*.lib
+*.exp
+
+# --- Local Databases & Runtime Logs ---
+database/*.db
+database/*.db-wal
+database/*.db-shm
+database/*.sqlite*
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# --- Dependencies & Local Tooling ---
+node_modules/
+.claude/
+.vs/
+.vscode/
+npm-debug.log*
+
+# --- Local Test Fixtures, Sample Invoices & AI Scratchpads ---
+step4_test_files/
+test-results/
+playwright-report/
+MSME B2B Tax Invoice1.pdf
+AGENTS.md
+CLAUDE.md
+STATE_CHECKPOINT.md
+*.tmp
+Thumbs.db
+.DS_Store

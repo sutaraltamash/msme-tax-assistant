@@ -4,6 +4,7 @@
 // ============================================================================
 
 #include "InvoiceRepository.hpp"
+#include "Crypto.hpp"
 
 #include <stdexcept>
 #include <system_error>
@@ -32,11 +33,24 @@ CREATE TABLE IF NOT EXISTS tax_sessions (
 );
 
 CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY,
-    username TEXT UNIQUE,
-    email TEXT UNIQUE,
-    password_hash TEXT
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',
+    message_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
+
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 
 CREATE TABLE IF NOT EXISTS invoices (
     invoice_id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -213,6 +227,189 @@ void InvoiceRepository::failClose(const std::string& what)
 {
     if (db_) { sqlite3_close(db_); db_ = nullptr; }
     throw std::runtime_error(what);
+}
+
+// ===========================================================================
+// authentication & sessions
+// ===========================================================================
+
+bool InvoiceRepository::createUser(const std::string& username,
+                                   const std::string& email,
+                                   const std::string& password_hash,
+                                   const std::string& role)
+{
+    // Normalize email
+    std::string normalized_email = email;
+    // trim
+    auto trim = [](std::string& s) {
+        size_t start = s.find_first_not_of(" \t\r\n");
+        size_t end = s.find_last_not_of(" \t\r\n");
+        if (start == std::string::npos) { s.clear(); return; }
+        s = s.substr(start, end - start + 1);
+    };
+    trim(normalized_email);
+    // lowercase
+    for (char& c : normalized_email) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    Stmt s(db_, "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)");
+    bindText(s.get(), 1, username);
+    bindText(s.get(), 2, normalized_email);
+    bindText(s.get(), 3, password_hash);
+    bindText(s.get(), 4, role);
+    int rc = sqlite3_step(s.get());
+    if (rc == SQLITE_CONSTRAINT || rc == SQLITE_CONSTRAINT_UNIQUE) {
+        return false; // duplicate email
+    }
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error("createUser: " + err(db_));
+    }
+    return true;
+}
+
+bool InvoiceRepository::userExistsByEmail(const std::string& email) const
+{
+    std::string normalized_email = email;
+    auto trim = [](std::string& s) {
+        size_t start = s.find_first_not_of(" \t\r\n");
+        size_t end = s.find_last_not_of(" \t\r\n");
+        if (start == std::string::npos) { s.clear(); return; }
+        s = s.substr(start, end - start + 1);
+    };
+    trim(normalized_email);
+    for (char& c : normalized_email) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    Stmt s(db_, "SELECT 1 FROM users WHERE email = ? LIMIT 1");
+    bindText(s.get(), 1, normalized_email);
+    return sqlite3_step(s.get()) == SQLITE_ROW;
+}
+
+bool InvoiceRepository::getUserByEmail(const std::string& email,
+                                       std::int64_t& out_id,
+                                       std::string& out_username,
+                                       std::string& out_password_hash,
+                                       std::string& out_role) const
+{
+    std::string normalized_email = email;
+    auto trim = [](std::string& s) {
+        size_t start = s.find_first_not_of(" \t\r\n");
+        size_t end = s.find_last_not_of(" \t\r\n");
+        if (start == std::string::npos) { s.clear(); return; }
+        s = s.substr(start, end - start + 1);
+    };
+    trim(normalized_email);
+    for (char& c : normalized_email) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    Stmt s(db_, "SELECT id, username, password_hash, role FROM users WHERE email = ? LIMIT 1");
+    bindText(s.get(), 1, normalized_email);
+    if (sqlite3_step(s.get()) == SQLITE_ROW) {
+        out_id = sqlite3_column_int64(s.get(), 0);
+        const unsigned char* u = sqlite3_column_text(s.get(), 1);
+        const unsigned char* ph = sqlite3_column_text(s.get(), 2);
+        const unsigned char* r = sqlite3_column_text(s.get(), 3);
+        out_username = u ? reinterpret_cast<const char*>(u) : "";
+        out_password_hash = ph ? reinterpret_cast<const char*>(ph) : "";
+        out_role = r ? reinterpret_cast<const char*>(r) : "user";
+        return true;
+    }
+    return false;
+}
+
+void InvoiceRepository::incrementMessageCount(std::int64_t user_id)
+{
+    Stmt s(db_, "UPDATE users SET message_count = message_count + 1 WHERE id = ?");
+    bindInt64(s.get(), 1, user_id);
+    if (sqlite3_step(s.get()) != SQLITE_DONE) {
+        throw std::runtime_error("incrementMessageCount: " + err(db_));
+    }
+}
+
+bool InvoiceRepository::createAuthSession(std::int64_t user_id, const std::string& token_hash, std::int64_t expires_at)
+{
+    Stmt s(db_, "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, strftime('%s','now'))");
+    bindText(s.get(), 1, token_hash);
+    bindInt64(s.get(), 2, user_id);
+    bindInt64(s.get(), 3, expires_at);
+    int rc = sqlite3_step(s.get());
+    if (rc != SQLITE_DONE) {
+        return false;
+    }
+    return true;
+}
+
+bool InvoiceRepository::validateAuthSession(const std::string& token_hash,
+                                            std::int64_t& out_user_id,
+                                            std::int64_t& out_expires_at) const
+{
+    Stmt s(db_, "SELECT user_id, expires_at FROM sessions WHERE token_hash = ?");
+    bindText(s.get(), 1, token_hash);
+    if (sqlite3_step(s.get()) == SQLITE_ROW) {
+        out_user_id = sqlite3_column_int64(s.get(), 0);
+        out_expires_at = sqlite3_column_int64(s.get(), 1);
+        return true;
+    }
+    return false;
+}
+
+void InvoiceRepository::deleteAuthSession(const std::string& token_hash)
+{
+    Stmt s(db_, "DELETE FROM sessions WHERE token_hash = ?");
+    bindText(s.get(), 1, token_hash);
+    sqlite3_step(s.get()); // ignore result
+}
+
+void InvoiceRepository::cleanupExpiredAuthSessions()
+{
+    Stmt s(db_, "DELETE FROM sessions WHERE expires_at < strftime('%s','now')");
+    sqlite3_step(s.get()); // ignore result
+}
+
+bool InvoiceRepository::getUserById(std::int64_t user_id,
+                                    std::string& out_username,
+                                    std::string& out_email,
+                                    std::string& out_role) const
+{
+    Stmt s(db_, "SELECT username, email, role FROM users WHERE id = ?");
+    bindInt64(s.get(), 1, user_id);
+    if (sqlite3_step(s.get()) == SQLITE_ROW) {
+        const unsigned char* u = sqlite3_column_text(s.get(), 0);
+        const unsigned char* e = sqlite3_column_text(s.get(), 1);
+        const unsigned char* r = sqlite3_column_text(s.get(), 2);
+        out_username = u ? reinterpret_cast<const char*>(u) : "";
+        out_email = e ? reinterpret_cast<const char*>(e) : "";
+        out_role = r ? reinterpret_cast<const char*>(r) : "user";
+        return true;
+    }
+    return false;
+}
+
+void InvoiceRepository::seedAdminIfNeeded(const std::string& admin_email,
+                                          const std::string& admin_password)
+{
+    // Generate salt and hash the password
+    auto salt = crypto::generateSalt();
+    std::string password_hash = crypto::pbkdf2Hash(admin_password, salt, 100000, 32);
+
+    // Check if admin already exists
+    std::int64_t existing_id;
+    std::string existing_username, existing_hash, existing_role;
+    if (getUserByEmail(admin_email, existing_id, existing_username, existing_hash, existing_role)) {
+        // Admin exists - verify password matches configured ADMIN_PASSWORD
+        // Only re-hash if verification fails (password actually changed in .env)
+        // or if role is not admin
+        bool password_matches = crypto::verifyPassword(admin_password, existing_hash);
+        bool role_is_admin = (existing_role == "admin");
+
+        if (!password_matches || !role_is_admin) {
+            // Re-hash the new password and update both hash and role
+            Stmt s(db_, "UPDATE users SET password_hash = ?, role = 'admin' WHERE id = ?");
+            bindText(s.get(), 1, password_hash);
+            bindInt64(s.get(), 2, existing_id);
+            sqlite3_step(s.get());
+        }
+        return;
+    }
+    // Create new admin user
+    createUser("admin", admin_email, password_hash, "admin");
 }
 
 // ===========================================================================

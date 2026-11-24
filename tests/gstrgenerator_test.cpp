@@ -75,8 +75,8 @@ TEST(gstr1_b2b_writes_header_and_intra_row)
     CHECK_EQ(rows.size(), 1u);
     CHECK(contains(rows[0], "27FGHIJ5678K1Z3"));      // recipient GSTIN
     CHECK(contains(rows[0], "INV-2026-0002"));        // invoice number
-    CHECK(contains(rows[0], "2026-04-02"));           // invoice date
-    CHECK(contains(rows[0], ",MH,"));                 // place of supply (intra)
+    CHECK(contains(rows[0], "02-Apr-2026"));          // invoice date (GSTN format DD-MMM-YYYY)
+    CHECK(contains(rows[0], ",27-Maharashtra,"));     // place of supply (GSTN format Code-StateName)
     CHECK(contains(rows[0], ",Intra,"));
     CHECK(contains(rows[0], ",18,"));                 // rate percent
     CHECK(contains(rows[0], ",1000.00,"));            // taxable value
@@ -92,7 +92,7 @@ TEST(gstr1_b2b_inter_invoice_places_igst)
     const auto rows = dataRows(GSTRGenerator::gstr1B2B({m}), header);
 
     CHECK_EQ(rows.size(), 1u);
-    CHECK(contains(rows[0], ",KA,"));                 // place of supply
+    CHECK(contains(rows[0], ",29-Karnataka,"));       // place of supply (GSTN format)
     CHECK(contains(rows[0], ",Inter,"));
     CHECK(contains(rows[0], ",1000.00,180.00,0.00,0.00,0.00"));  // igst placed, cgst/sgst zero
     CHECK(contains(rows[0], "1180.00"));
@@ -220,6 +220,82 @@ TEST(empty_input_yields_header_only)
     CHECK(r2.empty());
 }
 
+// ============================================================================
+// SECURITY TESTS (Step 3: CSV Formula Injection Neutralization)
+// ============================================================================
+
+TEST(csv_neutralizes_formula_injection_in_vendor_name)
+{
+    // Create an invoice with a malicious vendor name that attempts formula injection
+    auto doc = testfix::intraDoc();
+    doc["invoice"]["number"] = "=CMD|' /C calc'!A0";
+    const auto m = StateMatrix::validateAndSanitize(doc);
+
+    // GSTR-3B uses section/description but vendor name appears in GSTR-1 B2B
+    const std::string csv = GSTRGenerator::gstr1B2B({m});
+
+    // The formula should be neutralized with leading single quote
+    CHECK(contains(csv, "'=CMD|' /C calc'!A0"));
+    CHECK(!contains(csv, ",=CMD|' /C calc'!A0")); // without quote
+}
+
+TEST(csv_neutralizes_formula_injection_in_invoice_number)
+{
+    auto doc = testfix::intraDoc();
+    doc["invoice"]["number"] = "+SUM(A1:A10)";
+    const auto m = StateMatrix::validateAndSanitize(doc);
+
+    const std::string csv = GSTRGenerator::gstr1B2B({m});
+
+    CHECK(contains(csv, "'+SUM(A1:A10)"));
+    CHECK(!contains(csv, "+SUM(A1:A10)\"")); // without quote (but with CSV escaping)
+}
+
+TEST(csv_neutralizes_formula_injection_leading_tab_carriage)
+{
+    auto doc = testfix::intraDoc();
+    doc["invoice"]["number"] = "\tMalicious";
+    const auto m = StateMatrix::validateAndSanitize(doc);
+
+    const std::string csv = GSTRGenerator::gstr1B2B({m});
+
+    CHECK(contains(csv, "'\tMalicious"));
+}
+
+TEST(csv_neutralizes_formula_injection_minus_at_sign)
+{
+    auto doc = testfix::intraDoc();
+    doc["invoice"]["number"] = "-INJECT";
+    const auto m = StateMatrix::validateAndSanitize(doc);
+
+    const std::string csv = GSTRGenerator::gstr1B2B({m});
+
+    CHECK(contains(csv, "'-INJECT"));
+}
+
+TEST(csv_neutralizes_formula_injection_at_sign)
+{
+    auto doc = testfix::intraDoc();
+    doc["invoice"]["number"] = "@ATTACK";
+    const auto m = StateMatrix::validateAndSanitize(doc);
+
+    const std::string csv = GSTRGenerator::gstr1B2B({m});
+
+    CHECK(contains(csv, "'@ATTACK"));
+}
+
+TEST(csv_normal_text_unchanged)
+{
+    auto doc = testfix::intraDoc();
+    doc["invoice"]["number"] = "Normal Vendor Pvt Ltd";
+    const auto m = StateMatrix::validateAndSanitize(doc);
+
+    const std::string csv = GSTRGenerator::gstr1B2B({m});
+
+    CHECK(contains(csv, "Normal Vendor Pvt Ltd"));
+    CHECK(!contains(csv, "'Normal")); // No quote added for normal text
+}
+
 TESTS_BEGIN
 RUN_TEST(gstr1_b2b_writes_header_and_intra_row),
 RUN_TEST(gstr1_b2b_inter_invoice_places_igst),
@@ -232,4 +308,11 @@ RUN_TEST(gstr3b_omits_absent_bucket),
 RUN_TEST(csv_escapes_special_characters),
 RUN_TEST(money_columns_are_fixed_two_decimals),
 RUN_TEST(empty_input_yields_header_only),
+// Security tests (Step 3)
+RUN_TEST(csv_neutralizes_formula_injection_in_vendor_name),
+RUN_TEST(csv_neutralizes_formula_injection_in_invoice_number),
+RUN_TEST(csv_neutralizes_formula_injection_leading_tab_carriage),
+RUN_TEST(csv_neutralizes_formula_injection_minus_at_sign),
+RUN_TEST(csv_neutralizes_formula_injection_at_sign),
+RUN_TEST(csv_normal_text_unchanged),
 TESTS_END

@@ -8,6 +8,7 @@ set(TEST_SOURCES
   repository_test.cpp
   pipeline_test.cpp
   groqclient_test.cpp
+  crypto_test.cpp
 )
 
 foreach(test_src ${TEST_SOURCES})

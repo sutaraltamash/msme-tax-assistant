@@ -3,13 +3,26 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+    // --- Security: HTML escaping helper ---
+    function escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    }
+
     // --- UI Elements ---
-    const connectionBadge = document.getElementById('connectionBadge');
-    const connectionText = document.getElementById('connectionText');
-    const sessionIdDisplay = document.getElementById('sessionIdDisplay');
+    const profileButton = document.getElementById('profileButton');
+    const profileMenu = document.getElementById('profileMenu');
+    const profileEmail = document.getElementById('profileEmail');
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('fileInput');
     const uploadStatus = document.getElementById('uploadStatus');
+    const uploadModal = document.getElementById('uploadModal');
+    const btnAttach = document.getElementById('btnAttach');
+    const browseInvoices = document.getElementById('browseInvoices');
+    const uploadModalClose = document.getElementById('uploadModalClose');
+    const logoutButton = document.getElementById('logoutButton');
 
     // Ledger elements
     const ledgerEmptyState = document.getElementById('ledgerEmptyState');
@@ -99,12 +112,8 @@ document.addEventListener('DOMContentLoaded', () => {
         textDiv.innerText = content;
         bubble.appendChild(textDiv);
 
-        if (actionRequired) {
-            const tag = document.createElement('span');
-            tag.className = 'chat-action-tag';
-            tag.innerText = `Action: ${actionRequired}`;
-            bubble.appendChild(tag);
-        }
+        // actionRequired is kept for functional behavior (e.g., focusing chat input)
+        // but the visual "Action:" badge is no longer rendered
 
         chatMessages.appendChild(bubble);
         chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -125,7 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const div = document.createElement('div');
             div.className = `audit-item audit-${item.status}`;
             const icon = item.status === 'pass' ? '✓' : (item.status === 'warn' ? '⚠' : '✕');
-            div.innerHTML = `<span class="audit-icon">${icon}</span><div><strong>${item.title}:</strong> ${item.detail}</div>`;
+            div.innerHTML = `<span class="audit-icon">${escapeHtml(icon)}</span><div><strong>${escapeHtml(item.title)}:</strong> ${escapeHtml(item.detail)}</div>`;
             auditList.appendChild(div);
         });
     }
@@ -179,16 +188,16 @@ document.addEventListener('DOMContentLoaded', () => {
             matrixData.line_items.forEach((item, idx) => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td class="mono">${idx + 1}</td>
-                    <td class="mono">${item.hsn_code || 'N/A'}</td>
-                    <td>${item.description || 'N/A'}</td>
-                    <td class="text-right">${item.quantity || 1}</td>
-                    <td class="text-right mono">${formatINR(item.unit_price_cents)}</td>
-                    <td class="text-right mono">${formatINR(item.taxable_amount_cents)}</td>
-                    <td class="text-right mono">${item.cgst_rate_bps ? ((item.cgst_rate_bps/100)+'%') : '-'}</td>
-                    <td class="text-right mono">${item.sgst_rate_bps ? ((item.sgst_rate_bps/100)+'%') : '-'}</td>
-                    <td class="text-right mono">${item.igst_rate_bps ? ((item.igst_rate_bps/100)+'%') : '-'}</td>
-                    <td class="text-right mono"><strong>${formatINR(item.total_cents)}</strong></td>
+                    <td class="mono">${escapeHtml(idx + 1)}</td>
+                    <td class="mono">${escapeHtml(item.hsn_code || 'N/A')}</td>
+                    <td>${escapeHtml(item.description || 'N/A')}</td>
+                    <td class="text-right">${escapeHtml(item.quantity || 1)}</td>
+                    <td class="text-right mono">${escapeHtml(formatINR(item.unit_price_cents))}</td>
+                    <td class="text-right mono">${escapeHtml(formatINR(item.taxable_amount_cents))}</td>
+                    <td class="text-right mono">${escapeHtml(item.cgst_rate_bps ? ((item.cgst_rate_bps/100)+'%') : '-')}</td>
+                    <td class="text-right mono">${escapeHtml(item.sgst_rate_bps ? ((item.sgst_rate_bps/100)+'%') : '-')}</td>
+                    <td class="text-right mono">${escapeHtml(item.igst_rate_bps ? ((item.igst_rate_bps/100)+'%') : '-')}</td>
+                    <td class="text-right mono"><strong>${escapeHtml(formatINR(item.total_cents))}</strong></td>
                 `;
                 lineItemsBody.appendChild(row);
             });
@@ -210,21 +219,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Initialize WebSocket Client ---
     const wsClient = new TaxWebSocketClient({
-        onStatusChange: (status, message) => {
-            if (status === 'OPEN') {
-                connectionBadge.className = 'badge badge-connected';
-                connectionText.innerText = 'Connected';
-            } else if (status === 'CONNECTING') {
-                connectionBadge.className = 'badge badge-connecting';
-                connectionText.innerText = 'Connecting...';
-            } else {
-                connectionBadge.className = 'badge badge-disconnected';
-                connectionText.innerText = 'Disconnected';
-            }
-        },
+        onStatusChange: () => {},
         onSessionInit: (sessionId) => {
-            sessionIdDisplay.innerText = `Session: ${sessionId}`;
-            appendChatMessage('assistant', `Welcome! GST Compliance Session initialized (${sessionId.substring(0, 8)}...). Please upload an invoice (PDF, PNG, JPG) to begin statutory 2026 rule validation.`);
+            appendChatMessage('assistant', 'Welcome to your GST compliance workspace. Upload an invoice (PDF, PNG, or JPG) to begin statutory rule validation.');
         },
         onChatMessage: (msg) => {
             appendChatMessage(msg.role, msg.content, msg.actionRequired);
@@ -232,10 +229,25 @@ document.addEventListener('DOMContentLoaded', () => {
             if (msg.actionRequired) {
                 chatInput.focus();
             }
+            // If we were generating CSVs and got an error message instead of FILING_READY,
+            // re-enable the button so user can retry
+            if (msg.role === 'assistant' &&
+                (msg.content.includes('error') || msg.content.includes('Error') ||
+                 msg.content.includes('failed') || msg.content.includes('Failed')) &&
+                btnRequestFiling.disabled && btnRequestFiling.innerText.includes('Generating')) {
+                btnRequestFiling.disabled = false;
+                btnRequestFiling.innerText = '⚡ Generate GST Offline Utility CSVs';
+            }
+        },
+        onLedgerUpdate: (data) => {
+            renderLedger(data);
         },
         onFilingReady: (files) => {
             generatedFiles = files;
             deliverablesContainer.classList.remove('hidden');
+            // Re-enable the filing button so users can upload more bills and regenerate
+            btnRequestFiling.disabled = false;
+            btnRequestFiling.innerText = '⚡ Generate GST Offline Utility CSVs';
             appendChatMessage('assistant', 'Filing deliverables successfully generated and serialized to GST Offline Utility CSV formats. You can download or preview GSTR-1 and GSTR-3B below.');
         },
         onError: (err) => {
@@ -247,9 +259,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Initialize File Handler ---
     const fileHandler = new InvoiceFileHandler({
-        dropZoneElement: dropzone,
-        fileInputElement: fileInput,
+        dropZoneElement: null,
+        fileInputElement: null,
         onFileSelected: (info) => {
+            uploadModal.classList.add('hidden');
             uploadStatus.innerText = `Uploading ${info.fileName} (${(info.fileSize / 1024).toFixed(1)} KB)...`;
             appendChatMessage('user', `Uploaded invoice file: ${info.fileName} (${info.mimeType})`);
 
@@ -263,7 +276,114 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         onError: (msg) => {
             uploadStatus.innerText = msg;
-            alert(msg);
+            // Show user-friendly error for common backend error codes
+            if (msg.includes('413') || msg.includes('too large')) {
+                alert('File too large. Maximum allowed size is 5 MB.');
+            } else if (msg.includes('415') || msg.includes('Unsupported') || msg.includes('magic') || msg.includes('content does not match')) {
+                alert('Invalid file type. Only PDF, PNG, and JPEG files are allowed.');
+            } else if (msg.includes('429') || msg.includes('Rate limit')) {
+                alert('Rate limit exceeded. Please wait a minute and try again.');
+            } else {
+                alert(msg);
+            }
+        }
+    });
+
+    // The processor remains responsible for validation and base64 conversion;
+    // each selected/dropped file is passed through it independently.
+    function processFiles(files) {
+        fileHandler.processFiles(files);
+    }
+
+    browseInvoices.addEventListener('click', (event) => {
+        event.stopPropagation();
+        fileInput.click();
+    });
+    fileInput.addEventListener('change', () => {
+        const files = Array.from(fileInput.files || []);
+        if (files.length) {
+            uploadModal.classList.add('hidden');
+            processFiles(files);
+        }
+        // Reset so re-uploading the same file works
+        fileInput.value = '';
+    });
+    ['dragenter', 'dragover'].forEach(type => dropzone.addEventListener(type, event => {
+        event.preventDefault();
+        event.stopPropagation();
+        dropzone.classList.add('drag-active');
+    }));
+    ['dragleave', 'drop'].forEach(type => dropzone.addEventListener(type, event => {
+        event.preventDefault();
+        event.stopPropagation();
+        dropzone.classList.remove('drag-active');
+    }));
+    dropzone.addEventListener('drop', event => {
+        const files = Array.from(event.dataTransfer?.files || []);
+        if (files.length) {
+            uploadModal.classList.add('hidden');
+            processFiles(files);
+        }
+    });
+
+    btnAttach.addEventListener('click', () => {
+        uploadModal.classList.remove('hidden');
+        browseInvoices.focus();
+    });
+    uploadModalClose.addEventListener('click', (event) => {
+        event.stopPropagation();
+        uploadModal.classList.add('hidden');
+    });
+    uploadModal.addEventListener('click', (event) => {
+        if (event.target === uploadModal) uploadModal.classList.add('hidden');
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') uploadModal.classList.add('hidden');
+    });
+
+    // --- Auth: Check session on page load ---
+    async function checkAuth() {
+        try {
+            const response = await fetch('/api/auth/me', {
+                credentials: 'include'
+            });
+            if (response.ok) {
+                const user = await response.json();
+                profileEmail.innerText = user.email || user.username;
+                return true;
+            }
+        } catch (e) {
+            // Not authenticated
+        }
+        // Not authenticated - redirect to login
+        window.location.href = '/login.html';
+        return false;
+    }
+
+    // --- Logout ---
+    if (logoutButton) {
+        logoutButton.addEventListener('click', async () => {
+            try {
+                await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+            } catch (e) {
+                console.error('Logout error:', e);
+            }
+            window.location.href = '/login.html';
+        });
+    }
+
+    profileButton.addEventListener('click', () => {
+        const isOpen = !profileMenu.classList.contains('hidden');
+        profileMenu.classList.toggle('hidden', isOpen);
+        profileButton.setAttribute('aria-expanded', String(!isOpen));
+    });
+    document.addEventListener('click', event => {
+        if (!event.target.closest('.profile-wrap')) {
+            profileMenu.classList.add('hidden');
+            profileButton.setAttribute('aria-expanded', 'false');
         }
     });
 
@@ -358,4 +478,7 @@ document.addEventListener('DOMContentLoaded', () => {
             previewModal.classList.add('hidden');
         }
     });
+
+    // Run auth check on page load
+    checkAuth();
 });

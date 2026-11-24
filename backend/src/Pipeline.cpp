@@ -10,8 +10,13 @@
 #include <random>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
+#include <array>
+#include <filesystem>
+#include <cstdint>
 
 #include "GSTRGenerator.hpp"
+#include "Sanitizer.hpp"
 
 namespace tax {
 
@@ -31,6 +36,172 @@ std::string uuid4()
                   static_cast<unsigned long long>((gen() & 0x3fffu) | 0x8000u),
                   static_cast<unsigned long long>(gen() & 0xffffffffffffull));
     return std::string(buf);
+}
+
+// ============================================================================
+// File validation helpers (Security hardening: Task 2)
+// ============================================================================
+
+// Magic byte signatures for allowed file types
+struct MagicBytes {
+    static constexpr std::array<uint8_t, 4> PDF = {0x25, 0x50, 0x44, 0x46}; // %PDF
+    static constexpr std::array<uint8_t, 8> PNG = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    static constexpr std::array<uint8_t, 3> JPEG = {0xFF, 0xD8, 0xFF};
+};
+
+// Verify magic bytes of raw file data against allowed types
+// Returns the detected mime type on success, throws std::runtime_error on failure
+std::string verifyMagicBytes(const std::vector<uint8_t>& data) {
+    // Check PDF (4 bytes: %PDF)
+    if (data.size() >= MagicBytes::PDF.size()) {
+        bool match = true;
+        for (size_t i = 0; i < MagicBytes::PDF.size(); ++i) {
+            if (data[i] != MagicBytes::PDF[i]) { match = false; break; }
+        }
+        if (match) return "application/pdf";
+    }
+
+    // Check PNG (8 bytes)
+    if (data.size() >= MagicBytes::PNG.size()) {
+        bool match = true;
+        for (size_t i = 0; i < MagicBytes::PNG.size(); ++i) {
+            if (data[i] != MagicBytes::PNG[i]) { match = false; break; }
+        }
+        if (match) return "image/png";
+    }
+
+    // Check JPEG (3 bytes)
+    if (data.size() >= MagicBytes::JPEG.size()) {
+        bool match = true;
+        for (size_t i = 0; i < MagicBytes::JPEG.size(); ++i) {
+            if (data[i] != MagicBytes::JPEG[i]) { match = false; break; }
+        }
+        if (match) return "image/jpeg";
+    }
+
+    // If too small for any format
+    size_t minSize = std::min({MagicBytes::PDF.size(), MagicBytes::PNG.size(), MagicBytes::JPEG.size()});
+    if (data.size() < minSize) {
+        throw std::runtime_error("File too small to verify type");
+    }
+
+    throw std::runtime_error("Unsupported file type. Allowed: PDF, PNG, JPEG");
+}
+
+// RAII wrapper for secure temporary file - guarantees cleanup on all paths
+class SecureTempFile {
+public:
+    explicit SecureTempFile(const std::vector<uint8_t>& data)
+        : path_(createTempFile(data)) {}
+
+    ~SecureTempFile() {
+        cleanup();
+    }
+
+    SecureTempFile(const SecureTempFile&) = delete;
+    SecureTempFile& operator=(const SecureTempFile&) = delete;
+
+    SecureTempFile(SecureTempFile&& other) noexcept
+        : path_(std::move(other.path_)), data_(std::move(other.data_)) {
+        other.path_.clear();
+    }
+
+    SecureTempFile& operator=(SecureTempFile&& other) noexcept {
+        if (this != &other) {
+            cleanup();
+            path_ = std::move(other.path_);
+            data_ = std::move(other.data_);
+            other.path_.clear();
+        }
+        return *this;
+    }
+
+    const std::filesystem::path& path() const { return path_; }
+    const std::vector<uint8_t>& data() const { return data_; }
+
+private:
+    std::filesystem::path path_;
+    std::vector<uint8_t> data_;
+
+    std::filesystem::path createTempFile(const std::vector<uint8_t>& data) {
+        // Create temp directory outside web root
+        std::filesystem::path tempDir = std::filesystem::temp_directory_path() / "gstnode_uploads";
+        std::error_code ec;
+        std::filesystem::create_directories(tempDir, ec);
+
+        // Generate cryptographically random filename
+        std::random_device rd;
+        std::mt19937_64 gen(rd());
+        std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+
+        std::filesystem::path tempPath;
+        do {
+            std::stringstream ss;
+            ss << std::hex << dist(gen) << dist(gen) << dist(gen) << dist(gen);
+            tempPath = tempDir / (ss.str() + ".tmp");
+        } while (std::filesystem::exists(tempPath));
+
+        // Write file
+        std::ofstream out(tempPath, std::ios::binary);
+        if (!out) {
+            throw std::runtime_error("Failed to create temporary file");
+        }
+        out.write(reinterpret_cast<const char*>(data.data()), data.size());
+        if (!out) {
+            throw std::runtime_error("Failed to write temporary file");
+        }
+
+        return tempPath;
+    }
+
+    void cleanup() {
+        if (!path_.empty() && std::filesystem::exists(path_)) {
+            std::error_code ec;
+            std::filesystem::remove(path_, ec);
+            // Ignore cleanup errors - best effort
+        }
+    }
+};
+
+// Decode base64 string to raw bytes
+std::vector<uint8_t> base64Decode(const std::string& base64) {
+    static const std::string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    std::vector<uint8_t> out;
+    out.reserve(base64.size() * 3 / 4);
+
+    size_t i = 0;
+    while (i < base64.size()) {
+        // Skip whitespace
+        while (i < base64.size() && isspace(static_cast<unsigned char>(base64[i]))) ++i;
+        if (i >= base64.size()) break;
+
+        uint32_t sextet[4] = {0, 0, 0, 0};
+        int sextetCount = 0;
+
+        for (int j = 0; j < 4 && i < base64.size(); ++j, ++i) {
+            char c = base64[i];
+            if (c == '=') break;
+            size_t pos = alphabet.find(c);
+            if (pos == std::string::npos) continue;
+            sextet[sextetCount++] = static_cast<uint32_t>(pos);
+        }
+
+        if (sextetCount >= 2) {
+            out.push_back(static_cast<uint8_t>((sextet[0] << 2) | (sextet[1] >> 4)));
+        }
+        if (sextetCount >= 3) {
+            out.push_back(static_cast<uint8_t>(((sextet[1] & 0x0F) << 4) | (sextet[2] >> 2)));
+        }
+        if (sextetCount >= 4) {
+            out.push_back(static_cast<uint8_t>(((sextet[2] & 0x03) << 6) | sextet[3]));
+        }
+
+        // Skip padding
+        while (i < base64.size() && base64[i] == '=') ++i;
+    }
+
+    return out;
 }
 
 } // anonymous namespace
@@ -88,6 +259,77 @@ json Pipeline::chatFrame(const std::string& role, const std::string& content,
     json f{{"type", "CHAT_MESSAGE"}, {"role", role}, {"content", content}};
     if (!action_required.empty()) f["action_required"] = action_required;
     return f;
+}
+
+json Pipeline::ledgerUpdateFrame(const StateMatrix& matrix)
+{
+    json frame{{"type", "LEDGER_UPDATE"}};
+
+    // supplier
+    frame["supplier"]["legal_name"] = matrix.supplierName();
+    frame["supplier"]["gstin"] = matrix.supplierGstin();
+    frame["supplier"]["state_code"] = matrix.supplierState();
+
+    // buyer
+    if (matrix.hasBuyer())
+    {
+        if (matrix.buyerName().has_value()) frame["buyer"]["legal_name"] = *matrix.buyerName();
+        if (matrix.buyerGstin().has_value()) frame["buyer"]["gstin"] = *matrix.buyerGstin();
+        if (matrix.buyerState().has_value()) frame["buyer"]["state_code"] = *matrix.buyerState();
+    }
+
+    // invoice
+    frame["invoice"]["invoice_number"] = matrix.invoiceNumber();
+    frame["invoice"]["invoice_date"] = matrix.invoiceDate();
+    frame["invoice"]["place_of_supply"] = matrix.placeOfSupply();
+
+    // irp
+    if (matrix.irnPresent())
+    {
+        frame["irp"]["irn"] = matrix.irn();
+    }
+
+    // line_items
+    for (const auto& item : matrix.lineItems())
+    {
+        json li;
+        li["hsn_code"] = item.hsn;
+        li["description"] = item.description;
+        li["quantity"] = item.quantity.value_or(1.0);
+        li["unit_price_cents"] = item.unit_price_cents.value_or(0);
+        li["taxable_amount_cents"] = item.base_value_cents;
+
+        // Tax rate split
+        int rate_bps = item.tax_rate_bps;
+        if (matrix.supplyType() == SupplyType::INTRA)
+        {
+            li["cgst_rate_bps"] = rate_bps / 2;
+            li["sgst_rate_bps"] = rate_bps / 2;
+            li["igst_rate_bps"] = 0;
+        }
+        else
+        {
+            li["cgst_rate_bps"] = 0;
+            li["sgst_rate_bps"] = 0;
+            li["igst_rate_bps"] = rate_bps;
+        }
+        li["total_cents"] = item.base_value_cents +
+            (matrix.supplyType() == SupplyType::INTRA
+                ? (money::taxOn(item.base_value_cents, rate_bps / 2) * 2)
+                : money::taxOn(item.base_value_cents, rate_bps));
+        frame["line_items"].push_back(std::move(li));
+    }
+
+    // totals
+    const auto& tax = matrix.tax();
+    frame["totals"]["base_value_cents"] = matrix.baseValueCents();
+    frame["totals"]["igst_cents"] = tax.igst_cents;
+    frame["totals"]["cgst_cents"] = tax.cgst_cents;
+    frame["totals"]["sgst_cents"] = tax.sgst_cents;
+    frame["totals"]["total_tax_cents"] = tax.total_tax_cents;
+    frame["totals"]["total_value_cents"] = matrix.totalValueCents();
+
+    return frame;
 }
 
 // ===========================================================================
@@ -150,11 +392,47 @@ PipelineResult Pipeline::processUpload(const std::string& session_id,
         return out;
     }
 
+    // --- Security hardening: File validation (Task 2) ---
+    // 1. Decode base64 to raw bytes
+    std::vector<uint8_t> fileData;
+    try {
+        fileData = base64Decode(base64_data);
+    } catch (const std::exception& e) {
+        out.frames.push_back(chatFrame("assistant",
+                                       "Invalid base64 encoding: " + std::string(e.what()),
+                                       ""));
+        return out;
+    }
+
+    // 2. Check file size (max 5 MB)
+    constexpr size_t MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+    if (fileData.size() > MAX_FILE_SIZE) {
+        out.frames.push_back(chatFrame("assistant",
+                                       "File too large. Maximum allowed size is 5 MB.",
+                                       ""));
+        return out;
+    }
+
+    // 3. Verify magic bytes (do NOT trust mime_type or extension)
+    std::string detectedMime;
+    try {
+        detectedMime = verifyMagicBytes(fileData);
+    } catch (const std::exception& e) {
+        out.frames.push_back(chatFrame("assistant",
+                                       std::string(e.what()),
+                                       ""));
+        return out;
+    }
+
+    // 4. Create secure temporary file (RAII guarantees cleanup)
+    SecureTempFile tempFile(fileData);
+
     // --- probabalistic layer: extraction -----------------------------------
+    // Pass the detected mime type (from magic bytes) to extractor
     json doc;
     try
     {
-        doc = extractor_->extractFromBuffer(base64_data, mime_type);
+        doc = extractor_->extractFromBuffer(base64_data, detectedMime);
     }
     catch (const std::exception& e)
     {
@@ -242,6 +520,9 @@ PipelineResult Pipeline::processUpload(const std::string& session_id,
     it->second.status = next_status == "INTERROGATING" ? SessionStatus::INTERROGATING
                                                        : SessionStatus::ACTIVE;
 
+    // Emit LEDGER_UPDATE so frontend can render the ledger immediately
+    out.frames.push_back(ledgerUpdateFrame(matrix));
+
     out.session_status = next_status;
     return out;
 }
@@ -264,9 +545,12 @@ PipelineResult Pipeline::processUserReply(const std::string& session_id,
         return out;
     }
 
-    repo_->addChatMessage(session_id, "user", text, "");
+    // Sanitize user input before archiving (defense-in-depth)
+    const std::string sanitized = sanitizeUserMessage(text);
 
-    const std::string preview = text.size() > 240 ? text.substr(0, 240) + "…" : text;
+    repo_->addChatMessage(session_id, "user", sanitized, "");
+
+    const std::string preview = sanitized.size() > 240 ? sanitized.substr(0, 240) + "…" : sanitized;
     const std::string ack =
         "Your note was recorded. In the current extractor-seam phase your reply "
         "is archived for the conversation's rolling abstract; the live Groq chat "

@@ -5,10 +5,12 @@
 // ============================================================================
 
 #include "GSTRGenerator.hpp"
+#include "Sanitizer.hpp"
 
 #include <cstdio>
 #include <map>
 #include <utility>
+#include <array>
 
 namespace tax {
 
@@ -40,13 +42,18 @@ std::string ratePercent(int rate_bps)
 }
 
 // Standard RFC-4180-esque escaping: quote if the field carries , " \n or \r.
+// Also neutralizes CSV formula injection: if field starts with = + - @ \t \r,
+// prepend a single quote so Excel/Sheets treats it as literal text.
 std::string csvEscaped(const std::string& field)
 {
-    const bool needsQuote = field.find_first_of(",\"\n\r") != std::string::npos;
-    if (!needsQuote) return field;
+    // First, neutralize CSV formula injection
+    std::string safe_field = neutralizeCsvFormula(field);
+
+    const bool needsQuote = safe_field.find_first_of(",\"\n\r") != std::string::npos;
+    if (!needsQuote) return safe_field;
     std::string out = "\"";
-    out.reserve(field.size() + 2);
-    for (const char ch : field)
+    out.reserve(safe_field.size() + 2);
+    for (const char ch : safe_field)
     {
         if (ch == '"') out.push_back('"');   // double up internal quotes
         out.push_back(ch);
@@ -65,6 +72,134 @@ std::string csvRow(const std::vector<std::string>& fields)
     }
     line += "\r\n";
     return line;
+}
+
+// ---- GSTN-specific formatting helpers --------------------------------------
+
+// Convert YYYY-MM-DD to DD-MMM-YYYY (e.g., 2026-11-12 -> 12-Nov-2026).
+// If input isn't a valid YYYY-MM-DD string, pass it through unchanged.
+std::string formatInvoiceDate(const std::string& dateStr)
+{
+    if (dateStr.size() != 10) return dateStr;
+    if (dateStr[4] != '-' || dateStr[7] != '-') return dateStr;
+
+    const std::string year = dateStr.substr(0, 4);
+    const std::string month = dateStr.substr(5, 2);
+    const std::string day = dateStr.substr(8, 2);
+
+    // Validate numeric components
+    int m, d, y;
+    try {
+        y = std::stoi(year);
+        m = std::stoi(month);
+        d = std::stoi(day);
+    } catch (...) {
+        return dateStr;
+    }
+    if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1900 || y > 2100) {
+        return dateStr;
+    }
+
+    static const std::array<const char*, 13> monthNames = {
+        nullptr, "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    };
+
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%02d-%s-%04d", d, monthNames[m], y);
+    return buf;
+}
+
+// Convert place_of_supply code (numeric "27" or alpha "MH") to GSTN "Code-StateName"
+// format (e.g., "27" or "MH" -> "27-Maharashtra"). Covers all standard Indian
+// GST state/UT codes 01-38 and 97. If unknown, pass through unchanged.
+std::string formatPlaceOfSupply(const std::string& pos)
+{
+    if (pos.empty()) return pos;
+
+    // Map of state code (numeric) -> state name
+    static const std::map<std::string, std::string> stateNames = {
+        {"01", "Jammu & Kashmir"},
+        {"02", "Himachal Pradesh"},
+        {"03", "Punjab"},
+        {"04", "Chandigarh"},
+        {"05", "Uttarakhand"},
+        {"06", "Haryana"},
+        {"07", "Delhi"},
+        {"08", "Rajasthan"},
+        {"09", "Uttar Pradesh"},
+        {"10", "Bihar"},
+        {"11", "Sikkim"},
+        {"12", "Arunachal Pradesh"},
+        {"13", "Nagaland"},
+        {"14", "Manipur"},
+        {"15", "Mizoram"},
+        {"16", "Tripura"},
+        {"17", "Meghalaya"},
+        {"18", "Assam"},
+        {"19", "West Bengal"},
+        {"20", "Jharkhand"},
+        {"21", "Odisha"},
+        {"22", "Chhattisgarh"},
+        {"23", "Madhya Pradesh"},
+        {"24", "Gujarat"},
+        {"25", "Daman & Diu"},
+        {"26", "Dadra & Nagar Haveli"},
+        {"27", "Maharashtra"},
+        {"28", "Andhra Pradesh"},
+        {"29", "Karnataka"},
+        {"30", "Goa"},
+        {"31", "Lakshadweep"},
+        {"32", "Kerala"},
+        {"33", "Tamil Nadu"},
+        {"34", "Puducherry"},
+        {"35", "Andaman & Nicobar Islands"},
+        {"36", "Telangana"},
+        {"37", "Andhra Pradesh (New)"},
+        {"38", "Ladakh"},
+        {"97", "Other Territory"}
+    };
+
+    // Map of state alpha code -> numeric code
+    static const std::map<std::string, std::string> alphaToNumeric = {
+        {"JK", "01"}, {"HP", "02"}, {"PB", "03"}, {"CH", "04"}, {"UT", "05"},
+        {"HR", "06"}, {"DL", "07"}, {"RJ", "08"}, {"UP", "09"}, {"BR", "10"},
+        {"SK", "11"}, {"AR", "12"}, {"NL", "13"}, {"MN", "14"}, {"MZ", "15"},
+        {"TR", "16"}, {"ML", "17"}, {"AS", "18"}, {"WB", "19"}, {"JH", "20"},
+        {"OD", "21"}, {"CG", "22"}, {"MP", "23"}, {"GJ", "24"}, {"DD", "25"},
+        {"DN", "26"}, {"MH", "27"}, {"AP", "28"}, {"KA", "29"}, {"GA", "30"},
+        {"LD", "31"}, {"KL", "32"}, {"TN", "33"}, {"PY", "34"}, {"AN", "35"},
+        {"TS", "36"}, {"AP", "37"}, {"LA", "38"}, {"OT", "97"}
+    };
+
+    std::string numericCode = pos;
+
+    // If it's already numeric (e.g., "27"), use it directly
+    bool isNumeric = !pos.empty() && std::all_of(pos.begin(), pos.end(), ::isdigit);
+    if (!isNumeric)
+    {
+        // Try alpha code lookup (case-insensitive)
+        std::string upperPos = pos;
+        std::transform(upperPos.begin(), upperPos.end(), upperPos.begin(), ::toupper);
+        auto it = alphaToNumeric.find(upperPos);
+        if (it != alphaToNumeric.end())
+        {
+            numericCode = it->second;
+        }
+        else
+        {
+            return pos; // unknown alpha code, pass through
+        }
+    }
+
+    // Look up state name by numeric code
+    auto it = stateNames.find(numericCode);
+    if (it != stateNames.end())
+    {
+        return numericCode + "-" + it->second;
+    }
+
+    return pos; // unknown numeric code, pass through
 }
 
 // ---- per-leg aggregates ------------------------------------------------------
@@ -143,9 +278,9 @@ std::string GSTRGenerator::gstr1B2B(const std::vector<StateMatrix>& invoices)
             const TaxBreakdown s = recomputeSplit(m, li);
             out += csvRow({recipient,
                            m.invoiceNumber(),
-                           m.invoiceDate(),
+                           formatInvoiceDate(m.invoiceDate()),
                            invoiceValue,
-                           pois,
+                           formatPlaceOfSupply(pois),
                            type,
                            ratePercent(li.tax_rate_bps),
                            centsToRupees(li.base_value_cents),

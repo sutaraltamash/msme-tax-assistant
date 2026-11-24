@@ -4,66 +4,168 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sign in · GSTnode</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="styles.css">
 </head>
-<body class="min-h-screen bg-gray-100 text-gray-900">
-  <header class="absolute left-0 top-0 p-6 sm:p-8">
-    <a href="index.html" class="text-xl font-bold tracking-tight text-blue-700">GSTnode</a>
-  </header>
-  <main class="flex min-h-screen items-center justify-center px-4 py-20">
-    <section class="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl sm:p-10">
-      <h1 class="text-3xl font-bold tracking-tight">Welcome back</h1>
-      <p class="mt-2 text-sm text-gray-500">Sign in to continue to your workspace.</p>
-      <form id="login-form" class="mt-8 space-y-5">
-        <div>
-          <label for="username" class="mb-1.5 block text-sm font-medium">Username</label>
-          <input id="username" name="username" autocomplete="username" required placeholder="Your username" class="w-full rounded-lg border border-gray-300 px-3.5 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100">
-        </div>
-        <div>
-          <label for="email" class="mb-1.5 block text-sm font-medium">Email</label>
-          <input id="email" name="email" type="email" autocomplete="email" required placeholder="you@example.com" class="w-full rounded-lg border border-gray-300 px-3.5 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100">
-        </div>
-        <div>
-          <label for="password" class="mb-1.5 block text-sm font-medium">Password</label>
-          <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Enter your password" class="w-full rounded-lg border border-gray-300 px-3.5 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100">
-        </div>
-        <div class="flex items-center justify-between text-sm">
-          <label class="flex items-center gap-2 text-gray-600"><input name="remember" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">Remember for 30 days</label>
-          <a href="#" class="font-medium text-blue-700 hover:text-blue-800">Forgot password</a>
-        </div>
-        <p id="login-error" class="hidden text-sm text-red-600" role="alert"></p>
-        <button type="submit" class="w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">Sign In</button>
+<body class="login-page">
+  <header class="login-brand"><a href="index.html">GSTnode</a></header>
+  <main class="login-main login-wrapper">
+    <section class="login-card">
+      <div class="login-mark">₹</div>
+      <p class="login-eyebrow">GSTnode workspace</p>
+      <h1>Welcome back</h1>
+      <p class="login-intro">Sign in to continue to your tax workspace.</p>
+      <form id="login-form" class="login-form">
+        <div><label for="email">Email</label><input id="email" name="email" type="email" autocomplete="email" required placeholder="you@example.com"></div>
+        <div><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Enter your password"></div>
+        <div class="login-options"><label><input name="remember" type="checkbox"> Remember for 30 days</label><a href="#">Forgot password?</a></div>
+        <p id="login-error" class="hidden login-error" role="alert"></p>
+        <button type="submit" class="login-submit">Sign in</button>
       </form>
-      <div class="my-5 flex items-center gap-3 text-xs text-gray-400"><span class="h-px flex-1 bg-gray-200"></span>OR<span class="h-px flex-1 bg-gray-200"></span></div>
-      <button id="guest-button" type="button" class="w-full rounded-lg border border-gray-300 px-4 py-3 font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">Continue as Guest (Test Mode)</button>
+      <div class="login-divider"><span>OR</span></div>
+      <p class="login-signup">Don't have an account? <a href="#" id="show-register">Create one</a></p>
+    </section>
+
+    <!-- Registration form (initially hidden) -->
+    <section id="register-card" class="login-card hidden">
+      <div class="login-mark">₹</div>
+      <p class="login-eyebrow">GSTnode workspace</p>
+      <h1>Create your account</h1>
+      <p class="login-intro">Enter your details to get started.</p>
+      <form id="register-form" class="login-form">
+        <div><label for="reg-username">Username</label><input id="reg-username" name="username" autocomplete="username" required placeholder="Choose a username"></div>
+        <div><label for="reg-email">Email</label><input id="reg-email" name="email" type="email" autocomplete="email" required placeholder="you@example.com"></div>
+        <div><label for="reg-password">Password</label><input id="reg-password" name="password" type="password" autocomplete="new-password" required placeholder="At least 8 characters"></div>
+        <div><label for="reg-confirm">Confirm Password</label><input id="reg-confirm" name="confirm" type="password" autocomplete="new-password" required placeholder="Confirm your password"></div>
+        <p id="register-error" class="hidden login-error" role="alert"></p>
+        <button type="submit" class="login-submit">Create account</button>
+      </form>
+      <div class="login-divider"><span>OR</span></div>
+      <p class="login-signup">Already have an account? <a href="#" id="show-login">Sign in</a></p>
     </section>
   </main>
   <script>
-    const form = document.getElementById('login-form');
-    const error = document.getElementById('login-error');
-    form.addEventListener('submit', async (event) => {
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+    const loginError = document.getElementById('login-error');
+    const registerError = document.getElementById('register-error');
+    const loginCard = document.querySelector('.login-card');
+    const registerCard = document.getElementById('register-card');
+    const showRegister = document.getElementById('show-register');
+    const showLogin = document.getElementById('show-login');
+
+    function showError(element, message) {
+      element.textContent = message;
+      element.classList.remove('hidden');
+    }
+
+    function hideError(element) {
+      element.classList.add('hidden');
+      element.textContent = '';
+    }
+
+    function showCard(show) {
+      if (show === 'login') {
+        loginCard.classList.remove('hidden');
+        registerCard.classList.add('hidden');
+      } else {
+        loginCard.classList.add('hidden');
+        registerCard.classList.remove('hidden');
+      }
+    }
+
+    // Toggle between login and register
+    showRegister.addEventListener('click', (e) => {
+      e.preventDefault();
+      hideError(loginError);
+      hideError(registerError);
+      showCard('register');
+    });
+
+    showLogin.addEventListener('click', (e) => {
+      e.preventDefault();
+      hideError(loginError);
+      hideError(registerError);
+      showCard('login');
+    });
+
+    // Login form submission
+    loginForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      error.classList.add('hidden');
-      const data = new FormData(form);
+      hideError(loginError);
+
+      const data = new FormData(loginForm);
+      const remember = data.get('remember') === 'on';
+
       try {
-        const response = await fetch('/api/login', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: data.get('username'), email: data.get('email'), password: data.get('password') })
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include', // Important for cookies
+          body: JSON.stringify({
+            email: data.get('email'),
+            password: data.get('password'),
+            remember: remember
+          })
         });
         const result = await response.json();
-        if (!response.ok || !result.token) throw new Error('Unable to sign in. Check your credentials and try again.');
-        sessionStorage.setItem('token', result.token);
+        if (!response.ok) throw new Error(result.error || 'Unable to sign in. Check your credentials and try again.');
         window.location.href = 'dashboard.html';
       } catch (err) {
-        error.textContent = err.message || 'Sign in failed. Please try again.';
-        error.classList.remove('hidden');
+        showError(loginError, err.message || 'Sign in failed. Please try again.');
       }
     });
-    document.getElementById('guest-button').addEventListener('click', () => {
-      const uuid = crypto.randomUUID();
-      sessionStorage.setItem('token', uuid);
-      window.location.href = 'dashboard.html';
+
+    // Registration form submission
+    registerForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      hideError(registerError);
+
+      const data = new FormData(registerForm);
+      const password = data.get('password');
+      const confirm = data.get('confirm');
+
+      if (password !== confirm) {
+        showError(registerError, 'Passwords do not match.');
+        return;
+      }
+
+      if (password.length < 8) {
+        showError(registerError, 'Password must be at least 8 characters.');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include', // Important for cookies
+          body: JSON.stringify({
+            username: data.get('username'),
+            email: data.get('email'),
+            password: password
+          })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Registration failed. Please try again.');
+        window.location.href = 'dashboard.html';
+      } catch (err) {
+        showError(registerError, err.message || 'Registration failed. Please try again.');
+      }
     });
+
+    // Check if already authenticated on page load
+    (async () => {
+      try {
+        const response = await fetch('/api/auth/me', {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          window.location.href = 'dashboard.html';
+        }
+      } catch (e) {
+        // Not authenticated, stay on login page
+      }
+    })();
   </script>
 </body>
 </html>

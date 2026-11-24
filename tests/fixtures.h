@@ -9,6 +9,11 @@
 //
 // A tax_breakdown helper is provided for mutations so tests can open the
 // IGST / CGST+SGST legs without re-typing the whole structure.
+//
+// Test helpers for valid file magic bytes (base64 encoded):
+//   * kValidJpegBase64   — minimal valid JPEG (FF D8 FF)
+//   * kValidPngBase64    — minimal valid PNG (89 50 4E 47 0D 0A 1A 0A)
+//   * kValidPdfBase64    — minimal valid PDF (%PDF)
 
 #pragma once
 
@@ -17,6 +22,14 @@
 namespace testfix {
 
 using nlohmann::json;
+
+// Minimal valid base64-encoded file data with correct magic bytes
+// JPEG: FF D8 FF (3 bytes)
+inline const std::string kValidJpegBase64 = "/9j/";  // base64 of FF D8 FF
+// PNG: 89 50 4E 47 0D 0A 1A 0A (8 bytes)
+inline const std::string kValidPngBase64 = "iVBORw0KGg==";  // base64 of PNG magic bytes
+// PDF: 25 50 44 46 (4 bytes) = %PDF
+inline const std::string kValidPdfBase64 = "JVBERg==";  // base64 of %PDF
 
 // -- tax_breakdown builders -------------------------------------------------
 

@@ -325,6 +325,60 @@ RuleEngine::CheckOutcome RuleEngine::evalCheck(const json& check,
         }
         return {!allowed, label};
     }
+
+    // Special handling for HSN validation (R-HSN-005): check each line item's
+    // individual HSN code rather than the invoice-level comma-separated string.
+    // This prevents false positives when multiple valid HSNs are concatenated.
+    if (field == "invoice.hsn_string" && op == "token_length_out")
+    {
+        const auto& lineItems = matrix.lineItems();
+        if (!lineItems.empty())
+        {
+            // Check each line item's HSN individually
+            for (std::size_t i = 0; i < lineItems.size(); ++i)
+            {
+                const std::string& lineHsn = lineItems[i].hsn;
+                if (lineHsn.empty())
+                {
+                    continue; // skip empty, let other rules catch missing HSN
+                }
+                const std::size_t len = lineHsn.size();
+                bool allowed = false;
+                for (const auto& v : check["values"])
+                {
+                    if (v.is_number() &&
+                        static_cast<std::size_t>(v.get<double>()) == len)
+                    {
+                        allowed = true;
+                        break;
+                    }
+                }
+                if (!allowed)
+                {
+                    // Return violation with line_index context for template substitution
+                    // We encode the line index in the label so it can be used in message
+                    std::string detailedLabel = field + " " + op + " line[" + std::to_string(i + 1) + "]";
+                    // Store the violating line index in a special way for message template
+                    // We'll use a convention: append |LINE_INDEX:N to the label
+                    return {true, detailedLabel + "|LINE_INDEX:" + std::to_string(i + 1) + "|VIOLATING_HSN:" + lineHsn};
+                }
+            }
+            return {false, label}; // all line items passed
+        }
+        // Fall back to invoice-level HSN string if no line items
+        const std::size_t len = fact->get<std::string>().size();
+        bool allowed = false;
+        for (const auto& v : check["values"])
+        {
+            if (v.is_number() &&
+                static_cast<std::size_t>(v.get<double>()) == len)
+            {
+                allowed = true;
+                break;
+            }
+        }
+        return {!allowed, label};
+    }
     if (op == "ne_cross")
     {
         if (!check.contains("value_from") || !check["value_from"].is_string())
@@ -433,6 +487,15 @@ std::string RuleEngine::formatValue(const json& value)
 std::string RuleEngine::substitute(const std::string& tpl, const FactTable& table,
                                    const json& doc) const
 {
+    // We need access to the last fired check's label for special tokens like
+    // {line_index} and {hsn} in HSN validation. The label is stored in the
+    // calling context (evalRule) but not passed here. We'll add a workaround:
+    // check if the table has a special entry for the last violation context.
+    // Actually, the cleanest approach: pass the fired_checks labels from evalRule.
+    // But that requires signature change. Instead, let's store the last violation
+    // context in a member variable or check if the table has special keys.
+    // For now, the best approach is to extract from the table if available.
+
     std::string out;
     out.reserve(tpl.size());
     for (std::size_t i = 0; i < tpl.size(); ++i)
@@ -450,28 +513,57 @@ std::string RuleEngine::substitute(const std::string& tpl, const FactTable& tabl
         }
         const std::string token = tpl.substr(i + 1, close - i - 1);
         std::optional<json> resolved;
+
+        // Special handling for {line_index} and {hsn} in HSN violation context
+        // The violation context is stored in table.full["__violation_context__"]
+        if (token == "line_index" || token == "hsn")
+        {
+            auto vit = table.full.find("__violation_context__");
+            if (vit != table.full.end() && vit->second.is_string())
+            {
+                const std::string& context = vit->second.get<std::string>();
+                std::size_t idxPos = context.find("|LINE_INDEX:");
+                std::size_t hsnPos = context.find("|VIOLATING_HSN:");
+                if (idxPos != std::string::npos && token == "line_index")
+                {
+                    std::size_t start = idxPos + std::string("|LINE_INDEX:").length();
+                    std::size_t end = context.find('|', start);
+                    if (end == std::string::npos) end = context.length();
+                    resolved = json(context.substr(start, end - start));
+                }
+                else if (hsnPos != std::string::npos && token == "hsn")
+                {
+                    std::size_t start = hsnPos + std::string("|VIOLATING_HSN:").length();
+                    resolved = json(context.substr(start));
+                }
+            }
+        }
+
         // Resolution order: exact full dotted path, then the deliberate
         // template alias (e.g. {hsn} -> invoice.hsn_string), then the bare
         // last-leaf-wins name. Alias-first guarantees {hsn} binds the
         // invoice-level HSN even when a line item also has a leaf named "hsn".
-        auto fit = table.full.find(token);
-        if (fit != table.full.end())
+        if (!resolved.has_value())
         {
-            resolved = fit->second;
-        }
-        else
-        {
-            auto ait = template_aliases_.find(token);
-            if (ait != template_aliases_.end())
+            auto fit = table.full.find(token);
+            if (fit != table.full.end())
             {
-                resolved = resolvePath(doc, ait->second);
+                resolved = fit->second;
             }
             else
             {
-                auto bit = table.bare.find(token);
-                if (bit != table.bare.end())
+                auto ait = template_aliases_.find(token);
+                if (ait != template_aliases_.end())
                 {
-                    resolved = bit->second;
+                    resolved = resolvePath(doc, ait->second);
+                }
+                else
+                {
+                    auto bit = table.bare.find(token);
+                    if (bit != table.bare.end())
+                    {
+                        resolved = bit->second;
+                    }
                 }
             }
         }
@@ -559,6 +651,19 @@ RuleResult RuleEngine::evalRule(const RuleSpec& spec, const StateMatrix& matrix,
         table.full["invoice.tax_breakdown.has_cgst_sgst"]   = json(matrix.tax().has_cgst_sgst);
         table.bare["has_igst"]       = json(matrix.tax().has_igst);
         table.bare["has_cgst_sgst"]  = json(matrix.tax().has_cgst_sgst);
+
+        // Add violation context for special tokens like {line_index} and {hsn}
+        // from the first fired check that contains HSN violation metadata.
+        for (const auto& label : result.fired_checks)
+        {
+            if (label.find("|LINE_INDEX:") != std::string::npos)
+            {
+                // Store this label as a special key in table.full for substitute() to find
+                table.full["__violation_context__"] = json(label);
+                break;
+            }
+        }
+
         result.message = substitute(spec.message_template, table, doc);
     }
     return result;

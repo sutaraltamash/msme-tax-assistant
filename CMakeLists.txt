@@ -34,6 +34,8 @@ add_library(tax_core STATIC
   backend/src/GroqClient.cpp
   backend/src/InvoiceRepository.cpp
   backend/src/Pipeline.cpp
+  backend/src/Crypto.cpp
+  backend/src/Sanitizer.cpp
   backend/include/sqlite3.c         # SQLite amalgamation compiled as C
 )
 

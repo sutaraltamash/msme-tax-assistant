@@ -8,7 +8,7 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI-Powered Smart Tax Compliance Assistant (MSME GST)</title>
+    <title>GSTnode · Tax Compliance Assistant</title>
     <link rel="stylesheet" href="assets/styles.css">
     <!-- Fallback if root path is used -->
     <link rel="stylesheet" href="styles.css">
@@ -19,24 +19,22 @@
         <div class="brand-section">
             <div class="brand-logo">₹</div>
             <div>
-                <h1 class="brand-title">Tax Compliance Assistant</h1>
-                <p class="brand-subtitle">MSME GST Statutory Verification & Offline Filing Engine (2026 Mandates)</p>
+                <h1 class="brand-title">GSTnode</h1>
+                <p class="brand-subtitle">Tax compliance workspace</p>
             </div>
         </div>
-        <div class="header-status">
-            <span class="badge badge-rule">Statutory Rules 2026 Active</span>
-            <div id="connectionBadge" class="badge badge-connecting">
-                <span class="badge-dot"></span>
-                <span id="connectionText">Connecting...</span>
-            </div>
-            <span id="sessionIdDisplay" class="badge">Session: Initializing...</span>
+        <div class="profile-wrap">
+            <button type="button" id="profileButton" class="profile-button" aria-label="Open profile menu" aria-haspopup="true" aria-expanded="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5Z"/></svg>
+            </button>
+            <div id="profileMenu" class="profile-menu hidden" role="menu"><span id="profileEmail" class="profile-email"></span><button type="button" id="logoutButton" class="profile-menu-item">Logout</button></div>
         </div>
     </header>
 
     <!-- Main Container -->
     <main class="app-container">
         <!-- Left Panel: Ingestion & Live Compliance Ledger -->
-        <section class="panel">
+        <section class="panel ledger-panel">
             <div class="panel-header">
                 <h2 class="panel-title">
                     <span>📄</span> Ingestion & Verified Ledger (Deterministic)
@@ -44,16 +42,6 @@
                 <span id="supplyTypeBadge" class="badge">Awaiting Document</span>
             </div>
             <div class="panel-body">
-                <!-- Dropzone -->
-                <div id="dropzone" class="dropzone">
-                    <div class="dropzone-icon">📥</div>
-                    <h3 class="dropzone-title">Drag & Drop Invoice Here</h3>
-                    <p class="dropzone-desc">Supports PDF, PNG, JPEG, WEBP (Max 10 MB)</p>
-                    <input type="file" id="fileInput" accept="image/*,application/pdf" class="hidden">
-                    <button type="button" class="btn-upload" onclick="document.getElementById('fileInput').click()">Browse Invoices</button>
-                    <div id="uploadStatus" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;"></div>
-                </div>
-
                 <!-- Compliance Audit Card -->
                 <div class="card">
                     <div class="card-header">
@@ -169,11 +157,9 @@
         </section>
 
         <!-- Right Panel: Conversational Interrogation & Filing Console -->
-        <section class="panel">
+        <section class="panel chat-panel">
             <div class="panel-header">
-                <h2 class="panel-title">
-                    <span>💬</span> Compliance Assistant & Interrogation
-                </h2>
+                <h2 class="panel-title"><span>💬</span> GST Assistant</h2>
             </div>
             <div class="panel-body">
                 <!-- Chat Feed -->
@@ -184,9 +170,11 @@
                 <!-- Chat Input Form -->
                 <div class="chat-input-container">
                     <form id="chatForm" class="chat-form">
-                        <input type="text" id="chatInput" class="chat-input" placeholder="Type your response to clarify missing fields or compliance questions..." autocomplete="off">
-                        <button type="submit" id="btnSend" class="btn-send">Send</button>
+                        <button type="button" id="btnAttach" class="btn-attach" aria-label="Attach invoice" title="Attach invoice">＋</button>
+                        <input type="text" id="chatInput" class="chat-input" placeholder="Message your GST assistant…" autocomplete="off">
+                        <button type="submit" id="btnSend" class="btn-send" aria-label="Send message">↑</button>
                     </form>
+                    <div class="input-caption">GST calculations are validated deterministically.</div>
                 </div>
 
                 <!-- Filing Export Section -->
@@ -217,6 +205,20 @@
             </div>
         </section>
     </main>
+
+    <!-- Invoice upload modal -->
+    <div id="uploadModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="uploadModalTitle">
+        <div id="dropzone" class="upload-modal-card">
+            <div class="modal-header"><h3 id="uploadModalTitle">Add an invoice</h3><button type="button" id="uploadModalClose" class="icon-close" aria-label="Close">×</button></div>
+            <div class="upload-modal-body">
+                <div class="upload-symbol">↑</div><h4>Drop your invoice here</h4>
+                <p>PDF, PNG, JPEG or WEBP · Up to 10 MB</p>
+                <input type="file" id="fileInput" multiple accept="image/*,application/pdf" class="hidden">
+                <button type="button" id="browseInvoices" class="btn-upload">Choose a file</button>
+                <div id="uploadStatus" class="upload-status" aria-live="polite"></div>
+            </div>
+        </div>
+    </div>
 
     <!-- CSV Preview Modal -->
     <div id="previewModal" class="modal-overlay hidden">

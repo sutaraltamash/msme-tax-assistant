@@ -88,6 +88,38 @@ public:
     bool verifyUser(const std::string& username, const std::string& email,
                     const std::string& password_hash) const;
 
+    // ---- authentication & sessions -------------------------------------------
+    // User management
+    bool createUser(const std::string& username,
+                    const std::string& email,
+                    const std::string& password_hash,
+                    const std::string& role);
+    bool userExistsByEmail(const std::string& email) const;
+    bool getUserByEmail(const std::string& email,
+                        std::int64_t& out_id,
+                        std::string& out_username,
+                        std::string& out_password_hash,
+                        std::string& out_role) const;
+    void incrementMessageCount(std::int64_t user_id);
+
+    // Session management (auth cookies)
+    bool createAuthSession(std::int64_t user_id, const std::string& token_hash, std::int64_t expires_at);
+    bool validateAuthSession(const std::string& token_hash,
+                             std::int64_t& out_user_id,
+                             std::int64_t& out_expires_at) const;
+    void deleteAuthSession(const std::string& token_hash);
+    void cleanupExpiredAuthSessions();
+
+    // Admin seeding
+    void seedAdminIfNeeded(const std::string& admin_email,
+                           const std::string& admin_password);
+
+    // Get user by ID (for session validation)
+    bool getUserById(std::int64_t user_id,
+                     std::string& out_username,
+                     std::string& out_email,
+                     std::string& out_role) const;
+
 private:
     // Reset the handle (closing any open DB) after a fatal failure.
     void failClose(const std::string& what);

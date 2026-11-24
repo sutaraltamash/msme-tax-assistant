@@ -272,6 +272,9 @@ TEST(schema_walk_against_real_groq_schema)
 
 } // anonymous namespace
 
+// Helper to create a string with UTF-8 encoded Unicode characters
+static std::string u8(const char* utf8_literal) { return std::string(utf8_literal); }
+
 TEST(summary_totals_line_up)
 {
     // The aggregate total must equal base + computed tax (cross-check that the
@@ -282,6 +285,113 @@ TEST(summary_totals_line_up)
     CHECK_EQ(expected.cgst_cents, m.tax().cgst_cents);
     CHECK_EQ(expected.total_tax_cents, m.totalTaxCents());
     CHECK_EQ(m.baseValueCents() + m.totalTaxCents(), m.totalValueCents());
+}
+
+// ============================================================================
+// SECURITY TESTS (Step 3: Strict Deterministic C++ Gatekeeping on LLM Output)
+// ============================================================================
+
+TEST(rejects_invalid_gst_rate_outside_statutory_slabs)
+{
+    auto doc = intraDoc();
+    doc["invoice"]["line_items"][0]["tax_rate"] = 7.5; // Not a valid Indian GST slab
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+}
+
+TEST(rejects_nan_inf_money_values)
+{
+    auto doc = intraDoc();
+    doc["invoice"]["base_value"] = std::numeric_limits<double>::quiet_NaN();
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+
+    doc = intraDoc();
+    doc["invoice"]["base_value"] = std::numeric_limits<double>::infinity();
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+
+    doc = intraDoc();
+    doc["invoice"]["base_value"] = -std::numeric_limits<double>::infinity();
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+}
+
+TEST(rejects_negative_money_values)
+{
+    auto doc = intraDoc();
+    doc["invoice"]["base_value"] = -100.0;
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+
+    doc = intraDoc();
+    doc["invoice"]["line_items"][0]["base_value"] = -50.0;
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+
+    doc = intraDoc();
+    doc["invoice"]["tax_breakdown"]["cgst"] = -10.0;
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+}
+
+TEST(rejects_oversized_string_fields)
+{
+    auto doc = intraDoc();
+    doc["supplier"]["name"] = std::string(300, 'A'); // Over 200 char limit
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+
+    doc = intraDoc();
+    doc["invoice"]["number"] = std::string(60, 'I'); // Over 50 char limit
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+
+    doc = intraDoc();
+    doc["invoice"]["line_items"][0]["description"] = std::string(600, 'D'); // Over 500 char limit
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+}
+
+TEST(rejects_invalid_gstin_format)
+{
+    auto doc = intraDoc();
+    doc["supplier"]["gstin"] = "INVALID_GSTIN"; // Not 15 chars, no Z at pos 12
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+
+    doc = intraDoc();
+    doc["supplier"]["gstin"] = "27AAPFU0939F1YV"; // Z replaced with Y
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+
+    doc = intraDoc();
+    doc["buyer"]["gstin"] = "XXAAPFU0939F1ZV"; // State not digits
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+}
+
+TEST(rejects_invalid_hsn_format)
+{
+    auto doc = intraDoc();
+    doc["invoice"]["hsn_string"] = "8471A"; // Non-digit
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+
+    doc = intraDoc();
+    doc["invoice"]["hsn_string"] = "8471;DROP"; // 3 digits (not 4/6/8)
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+
+    doc = intraDoc();
+    doc["invoice"]["line_items"][0]["hsn"] = "1234567890"; // 5 digits
+    CHECK_THROWS(StateMatrix::validateAndSanitize(doc), std::invalid_argument);
+}
+
+TEST(accepts_valid_gst_rates)
+{
+    // Valid Indian GST slabs: 0%, 0.25%, 3%, 5%, 12%, 18%, 28%
+    const double valid_rates[] = {0, 0.25, 3, 5, 12, 18, 28};
+    for (double rate : valid_rates) {
+        auto doc = intraDoc();
+        doc["invoice"]["line_items"][0]["tax_rate"] = rate;
+        auto m = StateMatrix::validateAndSanitize(doc);
+        CHECK(m.lineItems()[0].tax_rate_bps == static_cast<int>(std::llround(rate * 100.0)));
+    }
+}
+
+TEST(strips_invisible_chars_from_string_fields)
+{
+    // The validation now sanitizes string fields
+    auto doc = intraDoc();
+    doc["supplier"]["name"] = std::string("Test") + u8("\xE2\x80\x8B") + u8("\xE2\x80\xAE") + "Name"; // Zero-width space + RLO
+    auto m = StateMatrix::validateAndSanitize(doc);
+    CHECK(m.supplierName() == "TestName"); // Invisible chars stripped
 }
 
 TESTS_BEGIN
@@ -306,4 +416,13 @@ RUN_TEST(invalid_line_rate_must_be_number),
 RUN_TEST(schema_walk_inline_type_checks),
 RUN_TEST(schema_walk_against_real_groq_schema),
 RUN_TEST(summary_totals_line_up),
+// Security tests (Step 3)
+RUN_TEST(rejects_invalid_gst_rate_outside_statutory_slabs),
+RUN_TEST(rejects_nan_inf_money_values),
+RUN_TEST(rejects_negative_money_values),
+RUN_TEST(rejects_oversized_string_fields),
+RUN_TEST(rejects_invalid_gstin_format),
+RUN_TEST(rejects_invalid_hsn_format),
+RUN_TEST(accepts_valid_gst_rates),
+RUN_TEST(strips_invisible_chars_from_string_fields),
 TESTS_END

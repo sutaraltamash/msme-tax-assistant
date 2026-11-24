@@ -5,6 +5,7 @@
 // ============================================================================
 
 #include "StateMatrix.hpp"
+#include "Sanitizer.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -47,6 +48,119 @@ int rateToBps(const json& value, const std::string& path)
         throw std::invalid_argument("StateMatrix: " + path + ": rate out of range");
     }
     return static_cast<int>(std::llround(bps));
+}
+
+// Valid Indian GST slabs in basis points (0%, 0.25%, 3%, 5%, 12%, 18%, 28%)
+bool isValidGstRateBps(int rate_bps)
+{
+    static const int valid_rates[] = {0, 25, 300, 500, 1200, 1800, 2800};
+    for (int r : valid_rates) {
+        if (rate_bps == r) return true;
+    }
+    return false;
+}
+
+std::string trimAscii(std::string s)
+{
+    std::size_t b = 0;
+    while (b < s.size() && (s[b] == ' ' || s[b] == '\t' || s[b] == '\r' || s[b] == '\n')) ++b;
+    std::size_t e = s.size();
+    while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t' || s[e - 1] == '\r' || s[e - 1] == '\n')) --e;
+    return s.substr(b, e - b);
+}
+
+std::string normalizeGstin(std::string s)
+{
+    s = trimAscii(std::move(s));
+    for (char& c : s) {
+        if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+    }
+    return s;
+}
+
+bool isPlaceholderValue(const std::string& raw)
+{
+    std::string s = trimAscii(raw);
+    for (char& c : s) {
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    }
+    return s.empty() || s == "n/a" || s == "na" || s == "none" || s == "null" ||
+           s == "nil" || s == "-" || s.rfind("unregistered", 0) == 0;
+}
+
+std::string normalizeStateCode(std::string s)
+{
+    s = trimAscii(std::move(s));
+    if (s.size() >= 2 && s[0] >= '0' && s[0] <= '9' && s[1] >= '0' && s[1] <= '9') {
+        if (s.size() == 2 || s[2] == ' ' || s[2] == '-' || s[2] == '(' || s[2] == ',' || s[2] == ':') {
+            return s.substr(0, 2);
+        }
+    }
+    return s;
+}
+
+std::string normalizeHsnString(std::string s, bool allow_multi_csv)
+{
+    s = trimAscii(std::move(s));
+    if (allow_multi_csv && s.find(',') != std::string::npos) {
+        std::string first_valid;
+        std::size_t pos = 0;
+        bool all_ok = true;
+        while (pos <= s.size()) {
+            std::size_t comma = s.find(',', pos);
+            std::string part = trimAscii(comma == std::string::npos ? s.substr(pos) : s.substr(pos, comma - pos));
+            std::string digits;
+            for (char c : part) {
+                if (c >= '0' && c <= '9') digits.push_back(c);
+                else if (c != ' ' && c != '-') { all_ok = false; break; }
+            }
+            if (!all_ok || digits.empty() || digits.size() > 8) { all_ok = false; break; }
+            if (first_valid.empty()) first_valid = digits;
+            if (comma == std::string::npos) break;
+            pos = comma + 1;
+        }
+        if (all_ok && !first_valid.empty()) return first_valid;
+        return s;
+    }
+    std::string compact;
+    bool only_digits_sep = !s.empty();
+    for (char c : s) {
+        if (c >= '0' && c <= '9') compact.push_back(c);
+        else if (c != ' ' && c != '-') { only_digits_sep = false; break; }
+    }
+    return only_digits_sep ? compact : s;
+}
+
+// Validate and sanitize a string field from LLM output with length cap
+std::string validateStringField(const json& value, const std::string& path,
+                                 std::size_t max_len, const char* field_name)
+{
+    if (!value.is_string())
+    {
+        throw std::invalid_argument("StateMatrix: " + path + ": expected a string");
+    }
+    std::string s = value.get<std::string>();
+    // Sanitize invisible/control chars, then reject oversized strings
+    s = stripInvisibleAndControls(s);
+    if (s.size() > max_len) { throw std::invalid_argument("StateMatrix: " + path + ": " + field_name + " exceeds max length"); }
+    return s;
+}
+
+// Validate GSTIN format (when non-empty)
+void validateGstin(const std::string& gstin, const std::string& path)
+{
+    if (!gstin.empty() && !isValidGstin(gstin))
+    {
+        throw std::invalid_argument("StateMatrix: " + path + ": invalid GSTIN format (expected 15-char alphanumeric, pos 12='Z')");
+    }
+}
+
+// Validate HSN/SAC format (when non-empty)
+void validateHsnSac(const std::string& hsn, const std::string& path)
+{
+    if (hsn.empty()) return;
+    if (hsn.size() > 8) { throw std::invalid_argument("StateMatrix: " + path + ": HSN/SAC exceeds 8 digits"); }
+    for (char c : hsn) { if (c < '0' || c > '9') { throw std::invalid_argument("StateMatrix: " + path + ": HSN/SAC must be digits-only"); } }
 }
 
 } // anonymous namespace
@@ -142,10 +256,12 @@ StateMatrix StateMatrix::validateAndSanitize(const json& doc)
         fail("supplier", "required object not present");
     }
     const json& sup = doc["supplier"];
-    m.supplier_gstin_  = requireString(sup.at("gstin"), "supplier.gstin");
-    m.supplier_name_   = requireString(sup.at("name"), "supplier.name");
-    m.supplier_state_  = requireString(sup.at("address_state"), "supplier.address_state");
-    if (sup.contains("aato_crore"))
+    m.supplier_gstin_  = normalizeGstin(validateStringField(sup.at("gstin"), "supplier.gstin", 32, "gstin"));
+    m.supplier_name_   = validateStringField(sup.at("name"), "supplier.name", 200, "name");
+    m.supplier_state_  = normalizeStateCode(validateStringField(sup.at("address_state"), "supplier.address_state", 50, "state"));
+    if (m.supplier_state_.size() > 2) fail("supplier.address_state", "state exceeds max length");
+    validateGstin(m.supplier_gstin_, "supplier.gstin");
+    if (sup.contains("aato_crore") && !sup["aato_crore"].is_null())
     {
         if (!sup["aato_crore"].is_number())
         {
@@ -160,14 +276,14 @@ StateMatrix StateMatrix::validateAndSanitize(const json& doc)
     }
 
     // ---- buyer (optional) ---------------------------------------------------
-    if (doc.contains("buyer"))
+    if (doc.contains("buyer") && !doc["buyer"].is_null())
     {
         const json& by = doc["buyer"];
         if (!by.is_object())
         {
             fail("buyer", "must be an object");
         }
-        if (by.contains("registered"))
+        if (by.contains("registered") && !by["registered"].is_null())
         {
             if (!by["registered"].is_boolean())
             {
@@ -175,17 +291,28 @@ StateMatrix StateMatrix::validateAndSanitize(const json& doc)
             }
             m.buyer_registered_ = by["registered"].get<bool>();
         }
-        if (by.contains("gstin"))
+        if (by.contains("gstin") && !by["gstin"].is_null())
         {
-            m.buyer_gstin_ = requireString(by.at("gstin"), "buyer.gstin");
+            std::string raw_gstin = validateStringField(by.at("gstin"), "buyer.gstin", 64, "gstin");
+            if (!isPlaceholderValue(raw_gstin))
+            {
+                std::string gstin = normalizeGstin(std::move(raw_gstin));
+                validateGstin(gstin, "buyer.gstin");
+                m.buyer_gstin_ = std::move(gstin);
+            }
         }
-        if (by.contains("name"))
+        if (by.contains("name") && !by["name"].is_null())
         {
-            m.buyer_name_ = requireString(by.at("name"), "buyer.name");
+            m.buyer_name_ = validateStringField(by.at("name"), "buyer.name", 200, "name");
         }
-        if (by.contains("address_state"))
+        if (by.contains("address_state") && !by["address_state"].is_null())
         {
-            m.buyer_state_ = requireString(by.at("address_state"), "buyer.address_state");
+            std::string st_code = normalizeStateCode(validateStringField(by.at("address_state"), "buyer.address_state", 50, "state"));
+            if (!isPlaceholderValue(st_code))
+            {
+                if (st_code.size() > 2) fail("buyer.address_state", "state exceeds max length");
+                m.buyer_state_ = std::move(st_code);
+            }
         }
     }
 
@@ -195,10 +322,15 @@ StateMatrix StateMatrix::validateAndSanitize(const json& doc)
         fail("invoice", "required object not present");
     }
     const json& inv = doc["invoice"];
-    m.invoice_number_     = requireString(inv.at("number"), "invoice.number");
-    m.invoice_date_       = requireString(inv.at("date"), "invoice.date");
-    m.place_of_supply_    = requireString(inv.at("place_of_supply"), "invoice.place_of_supply");
-    m.hsn_string_         = requireString(inv.at("hsn_string"), "invoice.hsn_string");
+    m.invoice_number_     = validateStringField(inv.at("number"), "invoice.number", 50, "number");
+    m.invoice_date_       = trimAscii(validateStringField(inv.at("date"), "invoice.date", 32, "date"));
+    if (m.invoice_date_.size() > 10 && (m.invoice_date_[10] == 'T' || m.invoice_date_[10] == ' ')) {
+        m.invoice_date_ = m.invoice_date_.substr(0, 10);
+    }
+    if (m.invoice_date_.size() > 10) fail("invoice.date", "date exceeds max length");
+    m.place_of_supply_    = normalizeStateCode(validateStringField(inv.at("place_of_supply"), "invoice.place_of_supply", 50, "place_of_supply"));
+    m.hsn_string_         = normalizeHsnString(validateStringField(inv.at("hsn_string"), "invoice.hsn_string", 128, "hsn"), true);
+    validateHsnSac(m.hsn_string_, "invoice.hsn_string");
 
     const std::string& st = requireString(inv.at("supply_type"), "invoice.supply_type");
     if (st == "INTRA")
@@ -268,22 +400,32 @@ StateMatrix StateMatrix::validateAndSanitize(const json& doc)
             fail(liPath, "line item must be an object");
         }
         LineItem item;
-        item.hsn            = requireString(li.at("hsn"), liPath + ".hsn");
+        item.hsn            = normalizeHsnString(validateStringField(li.at("hsn"), liPath + ".hsn", 32, "hsn"), false);
+        validateHsnSac(item.hsn, liPath + ".hsn");
         item.tax_rate_bps   = rateToBps(li.at("tax_rate"), liPath + ".tax_rate");
-        item.base_value_cents = money::toCents(li.at("base_value"));
-        if (li.contains("description"))
+        if (!isValidGstRateBps(item.tax_rate_bps))
         {
-            item.description = requireString(li.at("description"), liPath + ".description");
+            fail(liPath + ".tax_rate", "invalid GST rate (valid slabs: 0, 0.25, 3, 5, 12, 18, 28)");
         }
-        if (li.contains("quantity"))
+        item.base_value_cents = money::toCents(li.at("base_value"));
+        if (li.contains("description") && !li["description"].is_null())
+        {
+            item.description = validateStringField(li.at("description"), liPath + ".description", 500, "description");
+        }
+        if (li.contains("quantity") && !li["quantity"].is_null())
         {
             if (!li["quantity"].is_number())
             {
                 fail(liPath + ".quantity", "must be a number");
             }
-            item.quantity = li["quantity"].get<double>();
+            double qty = li["quantity"].get<double>();
+            if (!std::isfinite(qty) || qty < 0.0)
+            {
+                fail(liPath + ".quantity", "must be finite and non-negative");
+            }
+            item.quantity = qty;
         }
-        if (li.contains("unit_price"))
+        if (li.contains("unit_price") && !li["unit_price"].is_null())
         {
             item.unit_price_cents = money::toCents(li["unit_price"]);
         }
@@ -296,11 +438,11 @@ StateMatrix StateMatrix::validateAndSanitize(const json& doc)
         fail("invoice.tax_breakdown", "required object not present");
     }
     const json& tb = inv["tax_breakdown"];
-    if (tb.contains("cgst")) m.tax_.cgst_cents = money::toCents(tb["cgst"]);
-    if (tb.contains("sgst")) m.tax_.sgst_cents = money::toCents(tb["sgst"]);
-    if (tb.contains("igst")) m.tax_.igst_cents = money::toCents(tb["igst"]);
-    if (tb.contains("cess")) m.tax_.cess_cents = money::toCents(tb["cess"]);
-    if (tb.contains("total_tax"))
+    if (tb.contains("cgst") && !tb["cgst"].is_null()) m.tax_.cgst_cents = money::toCents(tb["cgst"]);
+    if (tb.contains("sgst") && !tb["sgst"].is_null()) m.tax_.sgst_cents = money::toCents(tb["sgst"]);
+    if (tb.contains("igst") && !tb["igst"].is_null()) m.tax_.igst_cents = money::toCents(tb["igst"]);
+    if (tb.contains("cess") && !tb["cess"].is_null()) m.tax_.cess_cents = money::toCents(tb["cess"]);
+    if (tb.contains("total_tax") && !tb["total_tax"].is_null())
     {
         m.tax_.total_tax_cents = money::toCents(tb["total_tax"]);
     }
@@ -321,14 +463,14 @@ StateMatrix StateMatrix::validateAndSanitize(const json& doc)
     m.total_value_cents_ = money::toCents(inv["total_value"]);
 
     // ---- IRP metadata (optional) ------------------------------------------------
-    if (doc.contains("irp"))
+    if (doc.contains("irp") && !doc["irp"].is_null())
     {
         const json& irp = doc["irp"];
         if (!irp.is_object())
         {
             fail("irp", "must be an object");
         }
-        if (irp.contains("reported_on"))
+        if (irp.contains("reported_on") && !irp["reported_on"].is_null())
         {
             m.irp_reported_on_ = requireString(irp.at("reported_on"), "irp.reported_on");
         }
