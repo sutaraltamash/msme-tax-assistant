@@ -45,3 +45,7 @@ STATE_CHECKPOINT.md
 *.tmp
 Thumbs.db
 .DS_Store
+
+# --- Local Node/Playwright Helper Config (Keep Local) ---
+package.json
+package-lock.json
