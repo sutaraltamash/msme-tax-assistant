@@ -1,0 +1,14 @@
+.git/
+.env
+.env.*
+build/
+Testing/
+node_modules/
+step4_test_files/
+.claude/
+database/*.db
+database/*.db-*
+*.log
+*.exe
+*.pdf
+tests/
