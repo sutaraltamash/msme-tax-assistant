@@ -30,7 +30,7 @@ RUN mkdir -p /app/database /tmp/gstnode_uploads
 
 ENV HOST=0.0.0.0 \
     PORT=18080 \
-    FRONTEND_DIR=/app/frontend \
+    FRONTEND_DIR=frontend \
     RULES_CONFIG_PATH=/app/config/rules_2026.json \
     GROQ_SCHEMA_PATH=/app/config/groq_schema.json \
     DATABASE_PATH=/app/database/tax_sessions.db
